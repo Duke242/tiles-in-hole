@@ -50,6 +50,21 @@
   <button type="button" onclick="location.reload()">Play again</button>
 </div></div>
 <div id="err">Couldn't load the 3D engine (needs internet for the Three.js CDN).<br>Check your connection and reload.</div>
+<script>
+window.addEventListener('error',function(e){
+  var d=document.getElementById('err');
+  d.style.display='flex';
+  d.innerHTML='<div style="max-width:90vw;word-break:break-word"><b>Error:</b> '
+    +String(e.message).replace(/</g,'&lt;')+'<br><small>'
+    +String((e.error&&e.error.stack)||e.filename+':'+e.lineno).replace(/</g,'&lt;')
+    +'</small></div>';
+});
+window.addEventListener('unhandledrejection',function(e){
+  var d=document.getElementById('err');
+  d.style.display='flex';
+  d.textContent='Promise error: '+String(e.reason&&e.reason.message||e.reason);
+});
+</script>
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 window.__threeOk=true;
