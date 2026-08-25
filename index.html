@@ -618,8 +618,14 @@ function frame(now){
     hole.tx=clamp(hole.tx+kx/l*70*dt,BOUND_LO,BOUND_HI);
     hole.tz=clamp(hole.tz+kz/l*70*dt,BOUND_LO,BOUND_HI)}
 
-  hole.x+=(hole.tx-hole.x)*Math.min(1,dt*14);
-  hole.z+=(hole.tz-hole.z)*Math.min(1,dt*14);
+  {
+    const hdx=hole.tx-hole.x,hdz=hole.tz-hole.z,hd=Math.hypot(hdx,hdz);
+    if(hd>1e-4){
+      const maxV=26+hole.r*0.9;               // hole glide speed cap (units/s)
+      const step=Math.min(hd,maxV*dt);
+      hole.x+=hdx/hd*step;hole.z+=hdz/hd*step;
+    }
+  }
   hole.r+=(hole.tr-hole.r)*Math.min(1,dt*3);
 
   groundUniforms.uHole.value.set(hole.x,hole.z);
