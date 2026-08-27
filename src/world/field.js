@@ -1,6 +1,49 @@
 import * as THREE from 'three';
 
 const GEO = new THREE.BoxGeometry(1, 1, 1);
+
+// A low camera means buildings get between you and the hole. Rather than
+// raising the camera, fragments inside a cone along the view ray are
+// dissolved with an ordered dither, so occluders turn to lace and the hole
+// stays visible.
+export const occlusion = {
+  uCamPos: { value: new THREE.Vector3() },
+  uFocus: { value: new THREE.Vector3() },
+  uTunnel: { value: 0 },
+};
+
+function patchOcclusion(mat) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uCamPos = occlusion.uCamPos;
+    shader.uniforms.uFocus = occlusion.uFocus;
+    shader.uniforms.uTunnel = occlusion.uTunnel;
+    shader.vertexShader = 'varying vec3 vOccPos;\n' + shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n  vOccPos = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;');
+    shader.fragmentShader = `
+      varying vec3 vOccPos;
+      uniform vec3 uCamPos;
+      uniform vec3 uFocus;
+      uniform float uTunnel;
+      float bayer2(vec2 a){ a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+    ` + shader.fragmentShader.replace('#include <dithering_fragment>', `
+      #include <dithering_fragment>
+      if (uTunnel > 0.0) {
+        vec3 av = uFocus - uCamPos;
+        float t = clamp(dot(vOccPos - uCamPos, av) / max(0.0001, dot(av, av)), 0.0, 1.0);
+        float dperp = distance(vOccPos, uCamPos + av * t);
+        float radius = uTunnel * mix(0.85, 0.34, t);
+        if (t > 0.02 && t < 0.97 && dperp < radius) {
+          float a = smoothstep(radius * 0.55, radius, dperp);
+          float dith = bayer2(0.5 * gl_FragCoord.xy) * 0.25 + bayer2(gl_FragCoord.xy);
+          if (a < dith) discard;
+        }
+      }
+    `);
+  };
+  mat.customProgramCacheKey = () => 'occludeField';
+  return mat;
+}
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const _obj = new THREE.Object3D();
 const _m = new THREE.Matrix4();
@@ -10,8 +53,9 @@ const _col = new THREE.Color();
 // A pool of instanced boxes. Objects claim a run of instances ("parts") and
 // are drawn by writing one transform per part each time they move.
 export class Field {
-  constructor(scene, capacity, { cast = true, receive = true, dynamic = false } = {}) {
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  constructor(scene, capacity, { cast = true, receive = true, dynamic = false, occlude = false } = {}) {
+    let mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    if (occlude) mat = patchOcclusion(mat);
     this.mesh = new THREE.InstancedMesh(GEO, mat, capacity);
     if (dynamic) this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = cast;

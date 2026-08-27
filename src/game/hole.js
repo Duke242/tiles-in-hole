@@ -28,15 +28,26 @@ export function createHole(scene) {
     new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }));
   group.add(floor);
 
+  // Soft dark lip, matching the reference's understated rim.
   const rim = new THREE.Mesh(
-    new THREE.RingGeometry(0.9, 1.02, 96).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0xf7f7fa, fog: false }));
+    new THREE.RingGeometry(0.94, 1.06, 96).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x241c16, fog: false }));
   group.add(rim);
 
   const inner = new THREE.Mesh(
-    new THREE.RingGeometry(0.72, 0.9, 96).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x140f22, fog: false }));
+    new THREE.RingGeometry(0.72, 0.95, 96).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x0b0710, fog: false }));
   group.add(inner);
+
+  // Little orange chevron showing which way the hole is travelling.
+  const arrowGeo = new THREE.BufferGeometry();
+  arrowGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+    0.0, 0, 1.45, -0.42, 0, 0.92, 0.42, 0, 0.92,
+  ], 3));
+  arrowGeo.computeVertexNormals();
+  const arrow = new THREE.Mesh(arrowGeo,
+    new THREE.MeshBasicMaterial({ color: 0xf5a623, side: THREE.DoubleSide, fog: false }));
+  group.add(arrow);
 
   const state = {
     x: 0, z: 0, r: HOLE.start, tr: HOLE.start,
@@ -76,6 +87,14 @@ export function createHole(scene) {
     rim.scale.set(state.r, 1, state.r);
     inner.position.y = lip + 0.04;
     inner.scale.set(state.r, 1, state.r);
+
+    const moving = state.speed > 1.5;
+    arrow.visible = moving;
+    if (moving) {
+      arrow.position.y = 0.16;
+      arrow.scale.setScalar(state.r);
+      arrow.rotation.y = Math.atan2(state.vx, state.vz);
+    }
   }
 
   function grow(value) {

@@ -118,71 +118,151 @@ export function pineModel() {
   return { parts, radius: 1.7, height: y + 1, color: leaf };
 }
 
-export function houseModel() {
-  const wall = pick(PALETTE.house), roof = pick(PALETTE.roof);
-  const w = rand(8, 12), d = rand(7, 10), h = rand(4.5, 7);
-  const parts = [
-    b(0, h / 2, 0, w, h, d, wall),
-    b(0, 0.35, 0, w + 0.4, 0.7, d + 0.4, shade(wall, 0.85)),
-  ];
-  let ry = h, rw = w + 1.1, rd = d + 1.1;
-  for (let i = 0; i < 3; i++) {
-    parts.push(b(0, ry + 0.55, 0, rw, 1.1, rd, i === 0 ? shade(roof, 0.8) : roof));
-    ry += 1.1; rw *= 0.66; rd *= 0.58;
-  }
-  parts.push(b(w * 0.28, ry + 0.9, 0, 1.1, 1.8, 1.1, '#8a6a5a'));
-  parts.push(b(0, 1.3, d / 2 + 0.08, 1.5, 2.6, 0.16, '#6a4a32'));
-  for (const sx of [-1, 1]) for (const sz of [-1, 1])
-    parts.push(b(sx * w * 0.28, h * 0.62, sz * (d / 2 + 0.08), 1.7, 1.5, 0.16, '#cfe8f5'));
-  return { parts, radius: Math.hypot(w, d) / 2, height: ry + 2, color: wall };
-}
+// --- architecture -----------------------------------------------------------
+// The reference city is built from four repeating forms: white L-blocks with a
+// bold trim band, colour-faced apartment slabs with white window grids, flat
+// modern boxes, and low colourful shop rows.
 
-export function shopModel() {
-  const wall = pick(PALETTE.wall), awn = pick(['#e8452f', '#3e8ef0', '#3ecf6e', '#f0a12f']);
-  const w = rand(11, 15), d = rand(10, 13), h = rand(6, 9);
-  const parts = [
-    b(0, h / 2, 0, w, h, d, wall),
-    b(0, h + 0.35, 0, w + 0.8, 0.7, d + 0.8, shade(wall, 0.7)),
-    b(0, 2.2, d / 2 + 0.5, w * 0.8, 0.5, 1.4, awn),
-    b(0, 1.1, d / 2 + 0.09, w * 0.55, 2.2, 0.18, '#bfe0f0'),
-    b(0, h * 0.78, d / 2 + 0.12, w * 0.5, 1.2, 0.2, '#ffffff'),
-  ];
-  for (let i = 0; i < 3; i++)
-    parts.push(b(-w * 0.28 + i * w * 0.28, h * 0.5, d / 2 + 0.09, 1.8, 1.6, 0.16, '#cfe8f5'));
-  return { parts, radius: Math.hypot(w, d) / 2, height: h + 1, color: wall };
-}
+export const TRIM = ['#e5342c', '#2f6fe8', '#f0a12f', '#2fb86e', '#8a5fd8', '#e8622f'];
+export const FACADE = ['#f07a2a', '#e8452f', '#3e8ef0', '#f0b429', '#5aa0d8',
+                       '#8a5fd8', '#2fb9a8', '#e86a9a', '#6fbf4a'];
+const CREAM = '#f7f3e9';
+const GLASS = '#e8f2f8';
 
-export function towerModel(minH, maxH) {
-  const wall = pick(PALETTE.wall);
-  const w = rand(12, 18), d = rand(12, 18), h = rand(minH, maxH);
-  const parts = [
-    b(0, h / 2, 0, w, h, d, wall),
-    b(0, h + 0.4, 0, w + 1.0, 0.8, d + 1.0, shade(wall, 0.66)),
-    b(0, 1.4, 0, w + 0.5, 2.8, d + 0.5, shade(wall, 1.12)),
-  ];
-  // roof clutter
-  parts.push(b(rand(-2, 2), h + 1.6, rand(-2, 2), rand(2, 4), 1.6, rand(2, 4), '#9aa0aa'));
-  if (Math.random() < 0.5) parts.push(b(0, h + 4, 0, 0.5, 5, 0.5, '#c0c4cc'));
-  // window grid
-  const rows = Math.max(2, Math.floor((h - 5) / 3.4));
-  const colsW = Math.max(2, Math.floor(w / 4.2));
-  const colsD = Math.max(2, Math.floor(d / 4.2));
-  const glass = Math.random() < 0.35 ? '#8fd3ef' : '#dff0fa';
-  for (let r = 0; r < rows; r++) {
-    const y = 4.4 + r * ((h - 5.4) / Math.max(1, rows - 1));
+// One window: a bright plate with a thin frame, sunk a hair into the wall.
+function windows(parts, w, d, h, floors, opts = {}) {
+  const {
+    inset = 0.09, sill = 3.0, fh = 3.4,
+    wide = 1.9, tall = 2.0, frame = '#ffffff', glass = GLASS,
+  } = opts;
+  const colsW = Math.max(2, Math.round(w / 4.4));
+  const colsD = Math.max(2, Math.round(d / 4.4));
+  for (let r = 0; r < floors; r++) {
+    const y = sill + r * fh;
+    if (y + tall / 2 > h - 0.4) break;
     for (let i = 0; i < colsW; i++) {
       const x = -w / 2 + (i + 0.5) * (w / colsW);
-      parts.push(b(x, y, d / 2 + 0.07, w / colsW * 0.55, 1.9, 0.14, glass));
-      parts.push(b(x, y, -d / 2 - 0.07, w / colsW * 0.55, 1.9, 0.14, glass));
+      parts.push(b(x, y, d / 2 + inset, wide + 0.34, tall + 0.34, 0.1, frame));
+      parts.push(b(x, y, d / 2 + inset + 0.03, wide, tall, 0.1, glass));
+      parts.push(b(x, y, -d / 2 - inset, wide + 0.34, tall + 0.34, 0.1, frame));
+      parts.push(b(x, y, -d / 2 - inset - 0.03, wide, tall, 0.1, glass));
     }
     for (let i = 0; i < colsD; i++) {
       const z = -d / 2 + (i + 0.5) * (d / colsD);
-      parts.push(b(w / 2 + 0.07, y, z, 0.14, 1.9, d / colsD * 0.55, glass));
-      parts.push(b(-w / 2 - 0.07, y, z, 0.14, 1.9, d / colsD * 0.55, glass));
+      parts.push(b(w / 2 + inset, y, z, 0.1, tall + 0.34, wide + 0.34, frame));
+      parts.push(b(w / 2 + inset + 0.03, y, z, 0.1, tall, wide, glass));
+      parts.push(b(-w / 2 - inset, y, z, 0.1, tall + 0.34, wide + 0.34, frame));
+      parts.push(b(-w / 2 - inset - 0.03, y, z, 0.1, tall, wide, glass));
     }
   }
-  return { parts, radius: Math.hypot(w, d) / 2, height: h + 2, color: wall };
 }
+
+// Cream L-shaped block with a thick coloured band along the roofline.
+export function lBlockModel() {
+  const trim = pick(TRIM);
+  const armW = rand(19, 26), armD = rand(10, 12);
+  const legW = rand(10, 12), legD = rand(15, 21);
+  const h = rand(6.5, 8.5);
+  const parts = [];
+  const ax = -legW / 2, az = -armD / 2;
+  // long arm
+  parts.push(b(ax + armW / 2 - armW / 2, h / 2, az, armW, h, armD, CREAM));
+  parts.push(b(ax + armW / 2 - armW / 2, h + 0.75, az, armW + 0.7, 1.5, armD + 0.7, trim));
+  // short leg
+  const lz = az + armD / 2 + legD / 2;
+  parts.push(b(-armW / 2 + legW / 2, h / 2, lz, legW, h, legD, CREAM));
+  parts.push(b(-armW / 2 + legW / 2, h + 0.75, lz, legW + 0.7, 1.5, legD + 0.7, trim));
+  // window rows on both wings
+  const rowY = [2.6, 5.6];
+  for (const y of rowY) {
+    const n = Math.max(3, Math.round(armW / 4.4));
+    for (let i = 0; i < n; i++) {
+      const x = -armW / 2 + (i + 0.5) * (armW / n);
+      parts.push(b(x, y, az - armD / 2 - 0.09, 2.1, 2.1, 0.12, '#ffffff'));
+      parts.push(b(x, y, az - armD / 2 - 0.13, 1.75, 1.75, 0.1, GLASS));
+    }
+    const m = Math.max(3, Math.round(legD / 4.4));
+    for (let i = 0; i < m; i++) {
+      const z = lz - legD / 2 + (i + 0.5) * (legD / m);
+      parts.push(b(-armW / 2 + legW / 2 - legW / 2 - 0.09, y, z, 0.12, 2.1, 2.1, '#ffffff'));
+      parts.push(b(-armW / 2 + legW / 2 - legW / 2 - 0.13, y, z, 0.1, 1.75, 1.75, GLASS));
+    }
+  }
+  return { parts, radius: Math.max(armW, legD) * 0.55, height: h + 1.5, color: trim };
+}
+
+// Colour-faced apartment slab, three to six storeys of white window grid.
+export function apartmentModel(minF = 3, maxF = 6) {
+  const face = pick(FACADE);
+  const w = rand(14, 19), d = rand(12, 16);
+  const floors = irand(minF, maxF), fh = 3.4;
+  const h = 2.2 + floors * fh;
+  const parts = [
+    b(0, h / 2, 0, w, h, d, face),
+    b(0, h + 0.5, 0, w + 1.0, 1.0, d + 1.0, '#dfe3e8'),   // roof cap
+    b(0, 1.1, 0, w + 0.35, 2.2, d + 0.35, shade(face, 0.88)),
+  ];
+  windows(parts, w, d, h, floors, { sill: 3.4, fh });
+  // door + rooftop box
+  parts.push(b(0, 1.5, d / 2 + 0.2, 2.6, 3.0, 0.3, '#5b4a3a'));
+  parts.push(b(rand(-3, 3), h + 2.1, rand(-3, 3), rand(3, 5), 2.2, rand(3, 5), '#c9ced6'));
+  return { parts, radius: Math.hypot(w, d) / 2, height: h + 3, color: face };
+}
+
+// Flat white modern building with a grey slab roof.
+export function modernModel() {
+  const w = rand(15, 22), d = rand(12, 17), h = rand(7, 11);
+  const parts = [
+    b(0, h / 2, 0, w, h, d, '#f4f2ee'),
+    b(0, h + 0.45, 0, w + 1.2, 0.9, d + 1.2, '#8e979f'),
+    b(0, h + 1.5, rand(-2, 2), rand(5, 9), 1.4, rand(4, 7), '#b9c0c6'),
+  ];
+  const bandY = h * 0.62;
+  parts.push(b(0, bandY, d / 2 + 0.1, w * 0.82, 2.4, 0.14, '#cfd8de'));
+  parts.push(b(0, bandY, -d / 2 - 0.1, w * 0.82, 2.4, 0.14, '#cfd8de'));
+  windows(parts, w, d, h, 2, { sill: 2.8, fh: 3.6, wide: 2.2, tall: 1.8 });
+  parts.push(b(0, 1.6, d / 2 + 0.16, 3.2, 3.2, 0.2, '#9fb3c0'));
+  return { parts, radius: Math.hypot(w, d) / 2, height: h + 2, color: '#f4f2ee' };
+}
+
+// Low colourful shopfront with an awning and a sign board.
+export function shopRowModel() {
+  const face = pick(FACADE);
+  const w = rand(12, 17), d = rand(9, 12), h = rand(5, 6.5);
+  const parts = [
+    b(0, h / 2, 0, w, h, d, face),
+    b(0, h + 0.5, 0, w + 0.9, 1.0, d + 0.9, shade(face, 0.72)),
+    b(0, h * 0.86, d / 2 + 0.14, w * 0.66, 1.1, 0.22, '#ffffff'),   // sign
+    b(0, 2.9, d / 2 + 0.75, w * 0.78, 0.4, 1.6, pick(TRIM)),        // awning
+  ];
+  const n = Math.max(2, Math.round(w / 5));
+  for (let i = 0; i < n; i++) {
+    const x = -w / 2 + (i + 0.5) * (w / n);
+    parts.push(b(x, 1.9, d / 2 + 0.1, w / n * 0.62, 3.2, 0.12, '#ffffff'));
+    parts.push(b(x, 1.9, d / 2 + 0.14, w / n * 0.52, 2.8, 0.1, GLASS));
+  }
+  return { parts, radius: Math.hypot(w, d) / 2, height: h + 1.5, color: face };
+}
+
+// Taller downtown slab: same language, more floors.
+export function towerModel(minH, maxH) {
+  const face = pick(FACADE);
+  const w = rand(15, 20), d = rand(13, 17);
+  const h = rand(minH, maxH);
+  const floors = Math.max(3, Math.floor((h - 4) / 3.4));
+  const parts = [
+    b(0, h / 2, 0, w, h, d, face),
+    b(0, h + 0.55, 0, w + 1.2, 1.1, d + 1.2, '#dfe3e8'),
+    b(0, 1.3, 0, w + 0.4, 2.6, d + 0.4, shade(face, 0.86)),
+    b(rand(-3, 3), h + 2.2, rand(-3, 3), rand(3, 6), 2.4, rand(3, 6), '#c9ced6'),
+  ];
+  windows(parts, w, d, h, floors, { sill: 3.6, fh: 3.4 });
+  return { parts, radius: Math.hypot(w, d) / 2, height: h + 3, color: face };
+}
+
+// Kept as an alias so the generator can still ask for a "house".
+export function houseModel() { return shopRowModel(); }
+export function shopModel() { return shopRowModel(); }
 
 export function lampModel() {
   return {

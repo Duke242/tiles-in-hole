@@ -41,7 +41,7 @@ export function updateObjects(dt, ctx) {
         }
 
         // Inside the crater but not swallowed yet: things tip and slide.
-        if (eligible && !SINKERS.has(o.kind) && d < funnelR) {
+        if (eligible && !SINKERS.has(o.kind) && d < r * 1.9 + o.radius * 0.5) {
           o.state = 'sliding';
           o.vx = 0; o.vz = 0;
           break;
@@ -64,7 +64,7 @@ export function updateObjects(dt, ctx) {
 
       case 'sliding': {
         // Accelerate down the crater wall toward the throat.
-        const pull = (240 * (1 - Math.min(1, d / Math.max(1, funnelR))) + 55) * dt / Math.max(0.01, d);
+        const pull = (240 * (1 - Math.min(1, d / Math.max(1, r * 2.2))) + 70) * dt / Math.max(0.01, d);
         o.vx += -dx * pull; o.vz += -dz * pull;
         // a little swirl so things curve into the pit
         const swirl = 34 * dt / Math.max(0.01, d);
@@ -75,7 +75,7 @@ export function updateObjects(dt, ctx) {
         const nd = Math.hypot(o.x - hx, o.z - hz);
         o.y = funnelY(nd, r);
         // tilt to face downhill
-        const slope = Math.min(1, (funnelR - nd) / Math.max(1, funnelR)) * 1.15;
+        const slope = Math.min(1, (r * 2.0 - nd) / Math.max(1, r * 2.0)) * 1.15;
         const ang = Math.atan2(o.z - hz, o.x - hx);
         o.pitch = Math.sin(ang) * slope;
         o.roll = -Math.cos(ang) * slope;

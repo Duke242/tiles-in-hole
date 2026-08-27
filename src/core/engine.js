@@ -41,12 +41,12 @@ export function createEngine(canvas) {
   scene.add(sky);
 
   // --- lights -------------------------------------------------------------
-  scene.add(new THREE.HemisphereLight(0xd6ecff, 0x74a85c, 0.34));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.07));
+  scene.add(new THREE.HemisphereLight(0xdcefff, 0x86bb6a, 0.46));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
 
-  const sun = new THREE.DirectionalLight(0xfff6e2, 1.28);
+  const sun = new THREE.DirectionalLight(0xfff8ea, 1.5);
   const mid = CITY.SPAN / 2;
-  sun.position.set(mid + 260, 430, mid - 190);
+  sun.position.set(mid + 300, 400, mid + 250);
   sun.target.position.set(mid, 0, mid);
   scene.add(sun.target);
   sun.castShadow = true;

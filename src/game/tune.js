@@ -13,8 +13,8 @@ export const BOUND = { lo: -26, hi: CITY.SPAN + 26 };
 // Funnel/crater profile, expressed in multiples of the hole radius so the
 // crater scales with the hole. Baked into the ring geometry AND used by the
 // object physics, so both must agree.
-export const FUNNEL_OUT = 4.05;
-export const FUNNEL_DEPTH = 1.4;
+export const FUNNEL_OUT = 1.45;
+export const FUNNEL_DEPTH = 0.5;
 
 export function funnelY(d, r) {
   const outer = r * FUNNEL_OUT;
@@ -40,9 +40,9 @@ export const TIERS = [
   { r: 4.2,  label: 'Trees & benches' },
   { r: 6.5,  label: 'Cars' },
   { r: 9.5,  label: 'Buses & houses' },
-  { r: 14,   label: 'Shops & low-rises' },
-  { r: 19,   label: 'Skyscrapers' },
-  { r: 26,   label: 'GIANTS' },
+  { r: 13,   label: 'Shops & low-rises' },
+  { r: 16,   label: 'Tower blocks' },
+  { r: 20,   label: 'GIANT STATUES' },
 ];
 
 export const NEED = {
@@ -50,9 +50,9 @@ export const NEED = {
   bench: 4.2, tree: 4.2, lamp: 4.2, bike: 4.2,
   car: 6.5, trafficLight: 6.5,
   bus: 9.5, truck: 9.5, house: 9.5,
-  shop: 14, lowrise: 14,
-  tower: 19,
-  giant: 26,
+  shop: 13, lowrise: 13,
+  tower: 16,
+  giant: 20,
 };
 
 export const VALUE = {

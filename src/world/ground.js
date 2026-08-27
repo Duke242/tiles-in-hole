@@ -19,55 +19,53 @@ const CITY_GLSL = /* glsl */`
     vec2 f  = w - bi * P;
 
     if (bi.x < 0.0 || bi.y < 0.0 || bi.x >= N || bi.y >= N) {
-      vec2 c = floor(w / 5.0);
-      float k = mod(c.x + c.y, 2.0) < 1.0 ? 0.0 : 1.0;
-      return mix(vec3(0.33,0.58,0.26), vec3(0.36,0.62,0.28), k);
+      return vec3(0.22,0.62,0.20);
     }
 
-    bool rx = f.x < RW;   // road running along z
-    bool rz = f.y < RW;   // road running along x
+    bool rx = f.x < RW;
+    bool rz = f.y < RW;
 
     if (rx || rz) {
-      vec3 road = vec3(0.175,0.185,0.215);
-      vec2 g = floor(w / 1.6);
-      road += (mod(g.x * 7.0 + g.y * 3.0, 5.0) / 5.0 - 0.5) * 0.012;
+      vec3 road = vec3(0.145,0.152,0.170);
+      if (rx && rz) return road;                       // intersection stays clean
 
-      if (rx && rz) {                       // intersection: keep it clean
-        return road;
-      }
-      if (rz) {                             // east-west road
-        if (abs(f.y - RW * 0.5) < 0.42 && mod(w.x, 7.0) < 3.6) return vec3(0.93,0.90,0.62);
+      if (rz) {                                        // east-west road
         float edge = min(f.y, RW - f.y);
-        float ix = min(f.x - RW, P - f.x);  // distance to nearest intersection
-        if (ix < 5.0 && edge > 1.2 && mod(f.y, 2.4) < 1.45) return vec3(0.92);
-        if (edge < 0.9) return vec3(0.62,0.63,0.66);
+        float ix   = min(f.x - RW, P - f.x);           // distance to intersection
+        if (ix < 7.0) {                                // crosswalk bars
+          if (edge > 0.9 && mod(f.y - 0.6, 2.15) < 1.25) return vec3(0.95);
+        } else if (abs(f.y - RW * 0.5) < 0.36 && mod(w.x, 8.0) < 4.2) {
+          return vec3(0.95);                           // white centre dashes
+        }
         return road;
       }
-      if (abs(f.x - RW * 0.5) < 0.42 && mod(w.y, 7.0) < 3.6) return vec3(0.93,0.90,0.62);
-      float edge = min(f.x, RW - f.x);
-      float iz = min(f.y - RW, P - f.y);
-      if (iz < 5.0 && edge > 1.2 && mod(f.x, 2.4) < 1.45) return vec3(0.92);
-      if (edge < 0.9) return vec3(0.55,0.56,0.60);
+      float edge = min(f.x, RW - f.x);                 // north-south road
+      float iz   = min(f.y - RW, P - f.y);
+      if (iz < 7.0) {
+        if (edge > 0.9 && mod(f.x - 0.6, 2.15) < 1.25) return vec3(0.95);
+      } else if (abs(f.x - RW * 0.5) < 0.36 && mod(w.y, 8.0) < 4.2) {
+        return vec3(0.95);
+      }
       return road;
     }
 
-    // Block interior: sidewalk ring, then the district's own surface.
+    // Wide pale pavement ringing every block, lightly tiled.
     float inx = min(f.x - RW, P - f.x);
     float inz = min(f.y - RW, P - f.y);
     float edge = min(inx, inz);
-    if (edge < 2.1) return vec3(0.76,0.77,0.80) + (mod(floor(w.x/3.0)+floor(w.y/3.0),2.0)<1.0 ? 0.0 : 0.02);
-    if (edge < 2.5) return vec3(0.66,0.67,0.70);
+    if (edge < 4.2) {
+      vec3 pave = vec3(0.855,0.845,0.815);
+      if (mod(w.x, 3.6) < 0.16 || mod(w.y, 3.6) < 0.16) pave *= 0.945;
+      if (edge < 0.5) pave *= 0.86;                    // kerb
+      return pave;
+    }
 
     vec4 dd = texture2D(uDistrict, (bi + 0.5) / N);
     vec3 base = dd.rgb;
-    vec2 c = floor(w / 3.0);
-    float checker = mod(c.x + c.y, 2.0) < 1.0 ? 0.0 : 1.0;
-    base *= mix(0.955, 1.045, checker);
 
-    // Park blocks (flagged in alpha) get a light path crossing them.
-    if (dd.a > 0.5) {
+    if (dd.a > 0.5) {                                  // park paths
       float px = abs(f.x - P * 0.5), pz = abs(f.y - P * 0.5);
-      if (min(px, pz) < 2.6) return vec3(0.78,0.72,0.58);
+      if (min(px, pz) < 2.8) return vec3(0.82,0.76,0.60);
     }
     return base;
   }
@@ -86,7 +84,7 @@ function patchMaterial(mat, uniforms) {
         diffuseColor.rgb = cityColor(vWPos.xz);
         if (uPitDepth > 0.0) {
           float sink = clamp(-vWPos.y / uPitDepth, 0.0, 1.0);
-          diffuseColor.rgb *= mix(1.0, 0.3, pow(sink, 1.35));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.055,0.042,0.035), pow(sink, 0.33));
         }
       `);
   };
@@ -98,7 +96,7 @@ function patchMaterial(mat, uniforms) {
 // whole thing scales with the hole radius and the road texture stretches
 // down into the pit.
 function funnelGeometry() {
-  const geo = new THREE.RingGeometry(1, FUNNEL_OUT, 128, 26);
+  const geo = new THREE.RingGeometry(1, FUNNEL_OUT, 128, 14);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {

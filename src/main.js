@@ -10,6 +10,7 @@ import { updateObjects } from './game/objects.js';
 import { createProgress } from './game/progress.js';
 import { createHUD } from './ui/hud.js';
 import { CITY, HOLE, BOUND } from './game/tune.js';
+import { occlusion } from './world/field.js';
 
 const canvas = document.getElementById('c');
 const engine = createEngine(canvas);
@@ -63,10 +64,10 @@ function updateCamera(dt) {
   // Portrait phones crop horizontally; pull back so the framing matches
   // what a landscape/desktop player sees.
   const aspectComp = Math.max(1, Math.sqrt(1.4 / Math.max(0.35, camera.aspect)));
-  const dist = (44 + r * 2.7) * input.zoom * aspectComp;
+  const dist = (46 + r * 2.5) * input.zoom * aspectComp;
   const tx = hole.state.x + hole.state.vx * 0.22;
   const tz = hole.state.z + hole.state.vz * 0.22;
-  camPos.set(tx, dist * 1.06, tz + dist * 0.62);
+  camPos.set(tx, dist * 0.80, tz + dist * 0.80);
   camLook.set(hole.state.x, -r * 0.4, hole.state.z - r * 0.35);
   if (!camInit) { camera.position.copy(camPos); camInit = true; }
   const k = Math.min(1, dt * 4.5);
@@ -80,6 +81,10 @@ function updateCamera(dt) {
   }
   camera.lookAt(camLook);
   engine.sky.position.copy(camera.position);
+
+  occlusion.uCamPos.value.copy(camera.position);
+  occlusion.uFocus.value.set(hole.state.x, 2.0, hole.state.z);
+  occlusion.uTunnel.value = hole.state.r * 0.85 + 4.5;
 }
 
 // --- overlays ---------------------------------------------------------------

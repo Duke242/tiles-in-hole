@@ -8,10 +8,10 @@ const { N, P, RW, INNER } = CITY;
 const { rand, irand, pick } = M;
 
 const DISTRICTS = {
-  downtown:    { ground: '#c9cbd2' },
-  commercial:  { ground: '#d9d2c4' },
-  residential: { ground: '#4bd456' },
-  park:        { ground: '#40c94c' },
+  downtown:    { ground: '#3fcb4a' },
+  commercial:  { ground: '#41cd4c' },
+  residential: { ground: '#43d24e' },
+  park:        { ground: '#3ac545' },
 };
 
 // Blocks are typed by distance from the centre: towers downtown, houses out
@@ -46,8 +46,8 @@ export function buildWorld(scene) {
   const objects = [];
   const giants = [];
 
-  const staticField = new Field(scene, 26000, { cast: true, receive: true });
-  const dynField = new Field(scene, 6000, { cast: true, receive: true, dynamic: true });
+  const staticField = new Field(scene, 68000, { cast: true, receive: true, occlude: true });
+  const dynField = new Field(scene, 14000, { cast: true, receive: true, dynamic: true, occlude: true });
 
   let totalValue = 0;
 
@@ -73,11 +73,7 @@ export function buildWorld(scene) {
   // --- per-block contents -------------------------------------------------
   const giantBlocks = [];
   const parkBlocks = blocks.filter(b => b.kind === 'park');
-  for (let i = 0; i < Math.min(4, parkBlocks.length); i++) {
-    const b = parkBlocks[i];
-    b.giant = true;
-    giantBlocks.push(b);
-  }
+  for (const b of parkBlocks) { b.giant = true; giantBlocks.push(b); }
 
   const types = [...GIANT_TYPES].sort(() => Math.random() - 0.5);
   let gi = 0;
@@ -89,7 +85,7 @@ export function buildWorld(scene) {
     const inZ = (m = 3) => rand(oz + m, oz + INNER - m);
 
     if (bl.giant) {
-      const g = createGiant(scene, types[gi % types.length], cx, cz, rand(1.0, 1.25));
+      const g = createGiant(scene, types[gi % types.length], cx, cz, rand(1.95, 2.45));
       gi++;
       const o = {
         kind: 'giant', x: cx, z: cz, yaw: g.yaw, giant: g,
@@ -106,41 +102,44 @@ export function buildWorld(scene) {
     }
 
     if (bl.kind === 'park') {
-      if (Math.random() < 0.5) place('shop', M.fountainModel(), cx, cz, 0, staticField);
-      for (let i = 0; i < 11; i++)
-        place('tree', Math.random() < 0.4 ? M.pineModel() : M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
-      for (let i = 0; i < 5; i++) place('bench', M.benchModel(), inX(5), inZ(5), rand(0, 6.28), staticField);
-      for (let i = 0; i < 2; i++) place('bin', M.binModel(), inX(4), inZ(4), 0, staticField);
+      if (Math.random() < 0.55) place('shop', M.fountainModel(), cx, cz, 0, staticField);
+      for (let i = 0; i < 16; i++)
+        place('tree', Math.random() < 0.35 ? M.pineModel() : M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
+      for (let i = 0; i < 6; i++) place('bench', M.benchModel(), inX(5), inZ(5), rand(0, 6.28), staticField);
+      for (let i = 0; i < 3; i++) place('bin', M.binModel(), inX(4), inZ(4), 0, staticField);
     } else if (bl.kind === 'downtown') {
-      const n = Math.random() < 0.55 ? 1 : 2;
-      if (n === 1) {
-        place('tower', M.towerModel(18, 27), cx, cz, 0, staticField);
-      } else {
-        place('tower', M.towerModel(15, 23), ox + INNER * 0.28, cz + rand(-6, 6), 0, staticField);
-        place('tower', M.towerModel(13, 20), ox + INNER * 0.74, cz + rand(-6, 6), 0, staticField);
-      }
-      for (let i = 0; i < 3; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
+      place('tower', M.towerModel(20, 30), ox + INNER * 0.28, oz + INNER * 0.3, 0, staticField);
+      place('tower', M.towerModel(16, 25), ox + INNER * 0.74, oz + INNER * 0.32, 0, staticField);
+      if (Math.random() < 0.7) place('lowrise', M.modernModel(), ox + INNER * 0.3, oz + INNER * 0.76, 0, staticField);
+      else place('lowrise', M.apartmentModel(3, 5), ox + INNER * 0.3, oz + INNER * 0.76, 0, staticField);
+      place('lowrise', M.apartmentModel(3, 5), ox + INNER * 0.75, oz + INNER * 0.76, 0, staticField);
+      for (let i = 0; i < 5; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
     } else if (bl.kind === 'commercial') {
-      place('shop', M.shopModel(), ox + INNER * 0.3, cz + rand(-4, 4), 0, staticField);
-      if (Math.random() < 0.7) place('lowrise', M.towerModel(10, 16), ox + INNER * 0.75, cz + rand(-4, 4), 0, staticField);
-      else place('shop', M.shopModel(), ox + INNER * 0.75, cz + rand(-4, 4), 0, staticField);
-      for (let i = 0; i < 3; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
-      for (let i = 0; i < 2; i++) place('bike', M.bikeModel(), inX(4), inZ(4), rand(0, 6.28), staticField);
-    } else {
-      const cols = 2, rows = 2;
-      for (let a = 0; a < cols; a++) {
-        for (let c = 0; c < rows; c++) {
-          if (Math.random() < 0.14) continue;
-          const hx = ox + (a + 0.5) * (INNER / cols) + rand(-2, 2);
-          const hz = oz + (c + 0.5) * (INNER / rows) + rand(-2, 2);
-          place('house', M.houseModel(), hx, hz, (a === 0 ? Math.PI : 0) + rand(-0.05, 0.05), staticField);
-        }
+      if (Math.random() < 0.5) {
+        place('lowrise', M.lBlockModel(), ox + INNER * 0.42, oz + INNER * 0.4, rand(0, 4) * Math.PI / 2, staticField);
+      } else {
+        place('lowrise', M.apartmentModel(3, 5), ox + INNER * 0.28, oz + INNER * 0.3, 0, staticField);
+        place('lowrise', M.modernModel(), ox + INNER * 0.74, oz + INNER * 0.32, 0, staticField);
       }
-      for (let i = 0; i < 4; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
+      place('shop', M.shopRowModel(), ox + INNER * 0.28, oz + INNER * 0.78, 0, staticField);
+      place('shop', M.shopRowModel(), ox + INNER * 0.72, oz + INNER * 0.78, 0, staticField);
+      for (let i = 0; i < 5; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
+      for (let i = 0; i < 3; i++) place('bike', M.bikeModel(), inX(4), inZ(4), rand(0, 6.28), staticField);
+    } else {
+      if (Math.random() < 0.45) {
+        place('lowrise', M.lBlockModel(), ox + INNER * 0.45, oz + INNER * 0.42, rand(0, 4) * Math.PI / 2, staticField);
+        place('shop', M.shopRowModel(), ox + INNER * 0.72, oz + INNER * 0.8, 0, staticField);
+      } else {
+        place('house', M.shopRowModel(), ox + INNER * 0.26, oz + INNER * 0.28, 0, staticField);
+        place('house', M.shopRowModel(), ox + INNER * 0.74, oz + INNER * 0.28, 0, staticField);
+        place('lowrise', M.apartmentModel(3, 4), ox + INNER * 0.3, oz + INNER * 0.76, 0, staticField);
+        place('house', M.shopRowModel(), ox + INNER * 0.76, oz + INNER * 0.78, 0, staticField);
+      }
+      for (let i = 0; i < 7; i++) place('tree', M.treeModel(), inX(3), inZ(3), rand(0, 6.28), staticField);
     }
 
     // Street furniture along the block edges, facing the pavement.
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 7; i++) {
       const side = irand(0, 3);
       const t = rand(0.2, 0.8);
       let px, pz;
@@ -159,8 +158,8 @@ export function buildWorld(scene) {
     if (Math.random() < 0.55)
       place('trafficLight', M.trafficLightModel(), ox - 2.4, oz - 2.4, 0, staticField);
 
-    // People wandering the block.
-    for (let i = 0; i < 5; i++) {
+    // Crowds: the reference has people lining every pavement.
+    for (let i = 0; i < 9; i++) {
       const o = place('person', M.personModel(), inX(2), inZ(2), rand(0, 6.28), dynField, {
         speed: rand(1.4, 2.6), wander: rand(0, 3), phase: rand(0, 9),
       });
@@ -184,9 +183,9 @@ export function buildWorld(scene) {
       axis, dir, speed: rand(9, 15) * dir,
     });
   }
-  for (let i = 0; i < 46; i++) spawnVehicle('car', M.carModel());
-  for (let i = 0; i < 9; i++) spawnVehicle('bus', M.busModel());
-  for (let i = 0; i < 8; i++) spawnVehicle('truck', M.truckModel());
+  for (let i = 0; i < 96; i++) spawnVehicle('car', M.carModel());
+  for (let i = 0; i < 16; i++) spawnVehicle('bus', M.busModel());
+  for (let i = 0; i < 14; i++) spawnVehicle('truck', M.truckModel());
 
   staticField.flush();
   dynField.flush();
