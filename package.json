@@ -1,0 +1,18 @@
+{
+  "name": "voxel-city-hole",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A black hole devours a voxel city. Three.js sandbox.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

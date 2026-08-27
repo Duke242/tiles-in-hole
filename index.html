@@ -2,661 +2,133 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#8fd8f2">
 <title>Voxel City Hole</title>
-<!-- Original recreation of the "black hole eats the voxel city" mechanic:
-     tilted 3D camera, city blocks, cars, people, trees, buildings and giant
-     voxel statues that crumble cube-by-cube into the hole. One big map.
-     All code and models in this file are original. -->
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#9adcf0;
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    -webkit-user-select:none;user-select:none}
-  #c{display:block;width:100vw;height:100vh;touch-action:none;cursor:grab}
-  #c:active{cursor:grabbing}
-  #hud{position:fixed;top:12px;left:0;right:0;display:flex;gap:10px;
-    justify-content:center;pointer-events:none;z-index:5}
-  .pill{background:rgba(255,255,255,.88);border:2px solid rgba(30,40,70,.15);
-    color:#233;padding:8px 16px;border-radius:999px;font-weight:800;
-    font-size:15px;letter-spacing:.3px;box-shadow:0 3px 10px rgba(0,0,0,.15)}
-  #pCombo{color:#0b7fd6;display:none}
-  #hint{position:fixed;bottom:16px;left:0;right:0;text-align:center;
-    color:rgba(20,30,50,.75);font-size:14px;font-weight:600;pointer-events:none;
-    z-index:5;transition:opacity 1s;text-shadow:0 1px 3px rgba(255,255,255,.8)}
-  #hint.gone{opacity:0}
-  #win{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
-    background:rgba(10,20,40,.45);z-index:10;backdrop-filter:blur(4px)}
-  #win .card{background:#fff;border-radius:22px;padding:36px 48px;text-align:center;
-    color:#223;box-shadow:0 24px 80px rgba(0,0,0,.35)}
-  #win h1{margin:0 0 8px;font-size:34px;color:#111}
-  #win p{margin:0 0 22px;color:#567;font-size:16px}
-  #win button{background:linear-gradient(135deg,#39c96e,#12a94f);color:#fff;
-    border:none;border-radius:14px;padding:13px 34px;font-size:17px;font-weight:800;
-    cursor:pointer}
-  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
-    color:#a33;background:#fff;font-size:16px;z-index:20;text-align:center;padding:20px}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#8fd8f2;
+    font-family:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  #c{display:block;width:100vw;height:100vh;touch-action:none;cursor:crosshair}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;
+    padding:calc(env(safe-area-inset-top,0px) + 10px) 12px 12px}
+  .panel{background:rgba(255,255,255,.9);border-radius:18px;
+    box-shadow:0 4px 18px rgba(20,40,70,.18);color:#1e2430}
+  #topbar{max-width:520px;margin:0 auto;padding:10px 14px 11px}
+  #topline{display:flex;align-items:baseline;gap:10px;font-weight:800}
+  #pctText{font-size:20px;letter-spacing:-.5px}
+  #topline .lbl{font-size:12px;font-weight:700;color:#7a8395;letter-spacing:.6px;
+    text-transform:uppercase}
+  #topline .grow{flex:1}
+  #scoreText{font-size:17px;font-variant-numeric:tabular-nums}
+  #sizeWrap{display:flex;align-items:center;gap:5px;font-size:16px}
+  #bar{height:9px;border-radius:99px;background:#e3e7ee;margin-top:8px;overflow:hidden}
+  #barFill{height:100%;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,#7b5cff,#3ec8f0);transition:width .18s ease-out}
+  #tierLabel{margin-top:6px;font-size:12px;font-weight:700;color:#7a8395;text-align:center}
+
+  #combo{position:fixed;top:calc(env(safe-area-inset-top,0px) + 108px);left:0;right:0;
+    text-align:center;font-size:30px;font-weight:900;letter-spacing:1px;
+    color:#fff;text-shadow:0 3px 0 #6b3fd8,0 6px 16px rgba(0,0,0,.3);
+    opacity:0;transform:scale(.85);transition:opacity .15s,transform .15s;z-index:6;pointer-events:none}
+  #combo.show{opacity:1;transform:scale(1)}
+
+  #toasts{position:fixed;top:calc(env(safe-area-inset-top,0px) + 150px);left:0;right:0;
+    display:flex;flex-direction:column;align-items:center;gap:8px;z-index:6;pointer-events:none}
+  .toast{background:linear-gradient(135deg,#7b5cff,#a34dff);color:#fff;
+    padding:11px 22px;border-radius:999px;font-weight:800;text-align:center;
+    box-shadow:0 8px 24px rgba(90,40,200,.4);opacity:0;transform:translateY(-12px) scale(.9);
+    transition:opacity .35s,transform .35s}
+  .toast.in{opacity:1;transform:translateY(0) scale(1)}
+  .toast b{display:block;font-size:13px;letter-spacing:1.4px}
+  .toast span{display:block;font-size:16px;margin-top:2px}
+
+  #miniWrap{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);
+    padding:6px;border-radius:16px;z-index:5;pointer-events:none}
+  #mini{display:block;border-radius:11px}
+
+  #hint{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);
+    text-align:center;font-size:13px;font-weight:700;color:#31465e;z-index:4;
+    text-shadow:0 1px 4px rgba(255,255,255,.9);pointer-events:none;
+    transition:opacity .8s}
+
+  /* ---------- overlays ---------- */
+  .overlay{position:fixed;inset:0;z-index:10;display:flex;align-items:center;
+    justify-content:center;background:rgba(12,26,44,.5);backdrop-filter:blur(6px);
+    transition:opacity .45s}
+  .overlay.hidden{opacity:0;pointer-events:none}
+  .card{background:#fff;border-radius:26px;padding:34px 40px;text-align:center;
+    max-width:min(420px,88vw);box-shadow:0 26px 70px rgba(0,0,0,.35)}
+  .card h1{margin:0 0 6px;font-size:32px;letter-spacing:-.5px;color:#151a24}
+  .card h1 span{background:linear-gradient(90deg,#7b5cff,#3ec8f0);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .card p{margin:0 0 18px;color:#5b6577;font-size:15px;line-height:1.5}
+  .card ul{list-style:none;margin:0 0 22px;padding:0;text-align:left;
+    color:#3c4555;font-size:14px}
+  .btn{background:linear-gradient(135deg,#7b5cff,#a34dff);color:#fff;border:0;
+    border-radius:16px;padding:15px 40px;font-size:18px;font-weight:800;cursor:pointer;
+    font-family:inherit;box-shadow:0 8px 20px rgba(110,60,220,.35)}
+  .btn:active{transform:scale(.97)}
+  .keys{margin-top:16px;font-size:12.5px;color:#8a93a5;line-height:1.7}
+  kbd{background:#eef1f6;border-radius:6px;padding:1px 7px;font-family:inherit;
+    font-weight:700;color:#4a5568;font-size:12px}
+  #fatal{position:fixed;inset:0;z-index:20;display:flex;align-items:center;
+    justify-content:center;background:#fff;color:#b3261e;padding:24px;text-align:center;
+    font-size:15px;line-height:1.6}
+  #fatal.hidden{display:none}
+  .hidden{display:none}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+
 <div id="hud">
-  <div class="pill" id="pPct">City devoured: 0%</div>
-  <div class="pill" id="pSize">&#128371; 3.2</div>
-  <div class="pill" id="pCombo">COMBO x0</div>
+  <div id="topbar" class="panel">
+    <div id="topline">
+      <span id="pctText">0%</span>
+      <span class="lbl">devoured</span>
+      <span class="grow"></span>
+      <span id="sizeWrap">🕳 <b id="sizeText">3.2</b></span>
+      <span class="grow"></span>
+      <span id="scoreText">0</span>
+      <span class="lbl">pts</span>
+    </div>
+    <div id="bar"><div id="barFill"></div></div>
+    <div id="tierLabel"></div>
+  </div>
 </div>
-<div id="hint">Hold and drag &mdash; the hole stays under your finger. Eat small things to grow. R restarts.</div>
-<div id="win"><div class="card">
-  <h1>CITY DEVOURED!</h1><p id="winStats"></p>
-  <button type="button" onclick="location.reload()">Play again</button>
-</div></div>
-<div id="err">Couldn't load the 3D engine (needs internet for the Three.js CDN).<br>Check your connection and reload.</div>
-<script>
-window.addEventListener('error',function(e){
-  var d=document.getElementById('err');
-  d.style.display='flex';
-  d.innerHTML='<div style="max-width:90vw;word-break:break-word"><b>Error:</b> '
-    +String(e.message).replace(/</g,'&lt;')+'<br><small>'
-    +String((e.error&&e.error.stack)||e.filename+':'+e.lineno).replace(/</g,'&lt;')
-    +'</small></div>';
-});
-window.addEventListener('unhandledrejection',function(e){
-  var d=document.getElementById('err');
-  d.style.display='flex';
-  d.textContent='Promise error: '+String(e.reason&&e.reason.message||e.reason);
-});
-</script>
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-window.__threeOk=true;
 
-/* ---------- basics ---------- */
-const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x9adcf0);
-const camera=new THREE.PerspectiveCamera(46,1,0.5,2000);
-function resize(){renderer.setSize(innerWidth,innerHeight);
-  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
-addEventListener('resize',resize);resize();
-scene.add(new THREE.HemisphereLight(0xffffff,0x88b46a,1.05));
-const sun=new THREE.DirectionalLight(0xffffff,0.9);
-sun.position.set(120,220,80);scene.add(sun);
+<div id="combo"></div>
+<div id="toasts"></div>
+<div id="miniWrap" class="panel"><canvas id="mini"></canvas></div>
+<div id="hint">Hold anywhere and drag — the hole follows your finger</div>
 
-const rand=(a,b)=>a+Math.random()*(b-a);
-const irand=(a,b)=>Math.floor(rand(a,b+1));
-const pick=a=>a[Math.floor(Math.random()*a.length)];
-const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+<div id="start" class="overlay">
+  <div class="card">
+    <h1><span>VOXEL CITY HOLE</span></h1>
+    <p>A black hole opens under the city. Swallow everything —
+       people, cars, houses, skyscrapers, and finally the giant statues in the parks.</p>
+    <button id="playBtn" class="btn" type="button">Play</button>
+    <div class="keys">
+      Hold &amp; drag to steer · <kbd>WASD</kbd> also works<br>
+      Scroll to zoom · <kbd>R</kbd> to restart
+    </div>
+  </div>
+</div>
 
-/* ---------- city layout constants ---------- */
-const P=60,RW=14,NB=6;            // block pitch, road width, blocks per side
-const CITY=NB*P+RW;               // 374
-const BOUND_LO=-16,BOUND_HI=CITY+16;
+<div id="win" class="overlay hidden">
+  <div class="card">
+    <h1><span>CITY DEVOURED</span></h1>
+    <p id="winStats"></p>
+    <button id="againBtn" class="btn" type="button">Play again</button>
+  </div>
+</div>
 
-/* ---------- ground with a real hole (shader discard) ---------- */
-const groundUniforms={uHole:{value:new THREE.Vector2(187,187)},uR:{value:3.2}};
-const ground=new THREE.Mesh(
-  new THREE.PlaneGeometry(2400,2400).rotateX(-Math.PI/2),
-  new THREE.ShaderMaterial({
-    uniforms:groundUniforms,
-    vertexShader:`varying vec3 vW;
-      void main(){vec4 wp=modelMatrix*vec4(position,1.0);vW=wp.xyz;
-        gl_Position=projectionMatrix*viewMatrix*wp;}`,
-    fragmentShader:`varying vec3 vW;uniform vec2 uHole;uniform float uR;
-      void main(){
-        float d=distance(vW.xz,uHole);
-        if(d<uR)discard;
-        float PP=${P.toFixed(1)},RR=${RW.toFixed(1)};
-        vec2 f=mod(vW.xz,PP);
-        bool rx=f.x<RR,rz=f.y<RR;
-        vec3 col;
-        if(rx||rz){
-          col=vec3(0.30,0.31,0.35);
-          if(rx&&!rz){
-            if(abs(f.x-RR*0.5)<0.45&&mod(vW.z,6.0)<3.0)col=vec3(0.95);
-            float zi=min(f.y-RR,PP-f.y);
-            if(zi<4.0&&mod(f.x,2.2)<1.3)col=vec3(0.93);
-          }else if(rz&&!rx){
-            if(abs(f.y-RR*0.5)<0.45&&mod(vW.x,6.0)<3.0)col=vec3(0.95);
-            float xi=min(f.x-RR,PP-f.x);
-            if(xi<4.0&&mod(f.y,2.2)<1.3)col=vec3(0.93);
-          }
-        }else{
-          vec2 cell=floor(vW.xz/3.0);
-          col=mod(cell.x+cell.y,2.0)<1.0?vec3(0.22,0.76,0.24):vec3(0.25,0.82,0.27);
-          float bx=min(f.x-RR,PP-f.x),bz=min(f.y-RR,PP-f.y);
-          if(min(bx,bz)<2.4)col=vec3(0.82,0.83,0.86);
-        }
-        float rim=1.0-smoothstep(uR,uR+2.6,d);
-        col=mix(col,vec3(0.02),rim*0.9);
-        gl_FragColor=vec4(col,1.0);
-      }`}));
-ground.position.set(CITY/2,0,CITY/2);
-scene.add(ground);
+<div id="fatal" class="hidden"></div>
 
-/* hole shaft + rim */
-const holeGrp=new THREE.Group();scene.add(holeGrp);
-const shaft=new THREE.Mesh(new THREE.CylinderGeometry(1,1,26,48,1,true),
-  new THREE.MeshBasicMaterial({color:0x07040d,side:THREE.BackSide}));
-shaft.position.y=-13;holeGrp.add(shaft);
-const shaftBottom=new THREE.Mesh(new THREE.CircleGeometry(1,48).rotateX(-Math.PI/2),
-  new THREE.MeshBasicMaterial({color:0x000000,side:THREE.DoubleSide}));
-shaftBottom.position.y=-25.9;holeGrp.add(shaftBottom);
-const rimWhite=new THREE.Mesh(new THREE.RingGeometry(1.0,1.14,64).rotateX(-Math.PI/2),
-  new THREE.MeshBasicMaterial({color:0xf5f5f5}));
-rimWhite.position.y=0.07;holeGrp.add(rimWhite);
-const rimDark=new THREE.Mesh(new THREE.RingGeometry(0.85,1.0,64).rotateX(-Math.PI/2),
-  new THREE.MeshBasicMaterial({color:0x191322}));
-rimDark.position.y=0.06;holeGrp.add(rimDark);
-
-/* ---------- instanced meshes ---------- */
-const boxGeo=new THREE.BoxGeometry(1,1,1);
-const lambert=new THREE.MeshLambertMaterial({color:0xffffff});
-const dummy=new THREE.Object3D();
-const tmpM=new THREE.Matrix4(),tmpM2=new THREE.Matrix4();
-
-function makeInst(cap,dynamic){
-  const m=new THREE.InstancedMesh(boxGeo,lambert.clone(),cap);
-  if(dynamic)m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const zero=new THREE.Matrix4().makeScale(0,0,0);
-  for(let i=0;i<cap;i++){m.setMatrixAt(i,zero);m.setColorAt(i,new THREE.Color(1,1,1))}
-  scene.add(m);return m;
-}
-
-/* part registration */
-function addPart(mesh,counter,obj,lx,ly,lz,sx,sy,sz,color){
-  const idx=counter.n++;
-  const local=new THREE.Matrix4().compose(
-    new THREE.Vector3(lx,ly,lz),new THREE.Quaternion(),new THREE.Vector3(sx,sy,sz));
-  mesh.setColorAt(idx,new THREE.Color(color));
-  obj.parts.push({idx,local});
-  return idx;
-}
-function writeObjMatrices(mesh,obj,px,py,pz,yaw,scale){
-  dummy.position.set(px,py,pz);
-  dummy.rotation.set(0,yaw,0);
-  dummy.scale.setScalar(scale);
-  dummy.updateMatrix();
-  for(const p of obj.parts){
-    tmpM.multiplyMatrices(dummy.matrix,p.local);
-    mesh.setMatrixAt(p.idx,tmpM);
-  }
-}
-const ZERO_M=new THREE.Matrix4().makeScale(0,0,0);
-function hideObj(mesh,obj){for(const p of obj.parts)mesh.setMatrixAt(p.idx,ZERO_M)}
-
-/* ---------- palettes ---------- */
-const BUILD_COLORS=['#e8622f','#2f78e8','#d8362f','#f5f2ea','#f0a12f','#8a5fd8','#2fb9a8'];
-const CAR_COLORS=['#ffd23e','#3ec8f0','#2f6fe8','#f05a3c','#7ce063','#f08cc0'];
-const SHIRTS=['#e85a5a','#3e8ef0','#3ecf6e','#f0c23e','#a06ef0','#f08cc0'];
-const HAIRS=['#3a2a1a','#1a1a1a','#a06a2a','#e0c060'];
-const TREE_GREENS=['#2fa843','#37b94e','#45cc59'];
-function darker(hex,f){const c=new THREE.Color(hex);c.multiplyScalar(f);return '#'+c.getHexString()}
-
-/* ---------- game state ---------- */
-const hole={x:RW/2+3*P,z:RW/2+3*P,r:3.2,tr:3.2,tx:0,tz:0};
-hole.tx=hole.x;hole.tz=hole.z;
-let eatenValue=0,totalValue=0,eatenCount=0,totalCount=0;
-let combo=0,comboTimer=0,time=0,won=false,hintGone=false,camZoom=1;
-const objects=[];
-
-/* ---------- generation ---------- */
-const statCounter={n:0},dynCounter={n:0};
-const statParts=[],dynParts=[]; // deferred: we count first via big capacity
-const statMesh=makeInst(6000,false);
-const dynMesh=makeInst(1400,true);
-
-function newObj(kind,x,z,r0,need,value){
-  const o={kind,x,z,r0,need,value,state:'idle',parts:[],t:0,spin:rand(3,6)*(Math.random()<.5?-1:1)};
-  objects.push(o);totalValue+=value;totalCount++;
-  return o;
-}
-
-function makeTree(x,z){
-  const o=newObj('tree',x,z,1.6,3.4,0.8);
-  o.color='#37b94e';
-  addPart(statMesh,statCounter,o,0,1.2,0,0.9,2.4,0.9,'#8a5a2f');
-  const g1=pick(TREE_GREENS);
-  addPart(statMesh,statCounter,o,0,3.6,0,2.9,2.6,2.9,g1);
-  addPart(statMesh,statCounter,o,rand(-1,1),5.1,rand(-1,1),1.8,1.6,1.8,pick(TREE_GREENS));
-  writeObjMatrices(statMesh,o,x,0,z,rand(0,6.28),1);
-  o.yaw=0;
-}
-function makePerson(x,z){
-  const o=newObj('person',x,z,0.6,0,0.5);
-  const shirt=pick(SHIRTS);o.color=shirt;
-  addPart(dynMesh,dynCounter,o,0,0.45,0,0.66,0.9,0.5,'#2a3550');
-  addPart(dynMesh,dynCounter,o,0,1.4,0,0.9,1.05,0.62,shirt);
-  addPart(dynMesh,dynCounter,o,0,2.3,0,0.62,0.62,0.62,'#f2c99a');
-  addPart(dynMesh,dynCounter,o,0,2.68,0,0.66,0.22,0.66,pick(HAIRS));
-  o.yaw=rand(0,6.28);o.speed=rand(1.2,2.2);o.wtimer=rand(0,3);o.phase=rand(0,9);
-  o.homeX=x;o.homeZ=z;
-}
-function makeCar(axis,roadK,lane){
-  const along=rand(0,CITY);
-  const lanePos=roadK*P+(lane?10.2:3.8);
-  const x=axis==='x'?along:lanePos, z=axis==='x'?lanePos:along;
-  const o=newObj('car',x,z,2.4,4.6,1.4);
-  const col=pick(CAR_COLORS);o.color=col;
-  addPart(dynMesh,dynCounter,o,0,0.35,0,4.0,0.5,2.25,'#222530');
-  addPart(dynMesh,dynCounter,o,0,1.0,0,4.6,1.15,2.2,col);
-  addPart(dynMesh,dynCounter,o,-0.3,1.95,0,2.3,0.85,1.9,'#dff2fa');
-  o.axis=axis;o.dir=lane?1:-1;o.speed=rand(9,14)*o.dir;
-  o.yaw=axis==='x'?(o.dir>0?0:Math.PI):(o.dir>0?-Math.PI/2:Math.PI/2);
-}
-function makeBuilding(x,z,w,d,h){
-  const need=h>18?18:(h>13?14:11);
-  const o=newObj('building',x,z,Math.hypot(w,d)/2,need,8+h*w*d/180);
-  const col=pick(BUILD_COLORS);o.color=col;o.h=h;
-  addPart(statMesh,statCounter,o,0,h/2,0,w,h,d,col);
-  addPart(statMesh,statCounter,o,0,h+0.3,0,w+0.7,0.6,d+0.7,darker(col,0.62));
-  if(Math.random()<0.5)addPart(statMesh,statCounter,o,0,1.1,0,w+0.25,2.2,d+0.25,'#f2f0ea');
-  const rows=Math.min(5,Math.floor(h/3.4)),colsW=Math.min(4,Math.floor(w/3.6)),colsD=Math.min(4,Math.floor(d/3.6));
-  for(let r=0;r<rows;r++){
-    const wy=3.6+r*((h-4.6)/Math.max(1,rows-1||1));
-    for(let cIdx=0;cIdx<colsW;cIdx++){
-      const wx=-w/2+ (cIdx+0.5)*(w/colsW);
-      addPart(statMesh,statCounter,o,wx,wy,d/2+0.06,1.5,1.9,0.14,'#eef3f8');
-      addPart(statMesh,statCounter,o,wx,wy,-d/2-0.06,1.5,1.9,0.14,'#eef3f8');
-    }
-    for(let cIdx=0;cIdx<colsD;cIdx++){
-      const wz=-d/2+(cIdx+0.5)*(d/colsD);
-      addPart(statMesh,statCounter,o,w/2+0.06,wy,wz,0.14,1.9,1.5,'#eef3f8');
-      addPart(statMesh,statCounter,o,-w/2-0.06,wy,wz,0.14,1.9,1.5,'#eef3f8');
-    }
-  }
-  writeObjMatrices(statMesh,o,x,0,z,0,1);
-  o.yaw=0;
-}
-
-/* ---------- giant voxel statues (original creatures) ---------- */
-function inEll(px,py,pz,cx,cy,cz,rx,ry,rz){
-  const a=(px-cx)/rx,b=(py-cy)/ry,c=(pz-cz)/rz;return a*a+b*b+c*c<=1;
-}
-function buildGiantModel(type){
-  const vox=[];
-  const jitter=(hex,amt)=>{const c=new THREE.Color(hex);
-    c.offsetHSL(0,rand(-0.02,0.02),rand(-amt,amt));return c;};
-  for(let x=-9;x<=9;x++)for(let y=0;y<=32;y++)for(let z=-9;z<=9;z++){
-    let col=null;
-    if(type==='bunny'){
-      if(inEll(x,y,z,0,7,0,7,8,6))col='#cfd0d6';
-      if(inEll(x,y,z,0,7,4.5,4.5,5,2.5))col='#f2f2f5';
-      if(inEll(x,y,z,0,17,1.5,5,5,4.5))col='#cfd0d6';
-      if(inEll(x,y,z,0,6,-6.4,2,2,2))col='#f2f2f5';
-      if(inEll(x,y,z,-2.6,25,1.5,1.7,7,1.6)||inEll(x,y,z,2.6,25,1.5,1.7,7,1.6))
-        col=z>=2?'#f2a7c3':'#cfd0d6';
-      if(inEll(x,y,z,-2,18,5.4,0.9,0.9,0.9)||inEll(x,y,z,2,18,5.4,0.9,0.9,0.9))col='#26262e';
-      if(inEll(x,y,z,0,16.4,5.8,0.7,0.7,0.7))col='#f2a7c3';
-    }else if(type==='bear'){
-      if(inEll(x,y,z,0,6.5,0,6.5,7,5.5))col='#a5692a';
-      if(inEll(x,y,z,0,6.5,4.4,3.6,4.2,2))col='#d9a05e';
-      if(inEll(x,y,z,-6.3,8,1,2,4.5,2)||inEll(x,y,z,6.3,8,1,2,4.5,2))col='#a5692a';
-      if(inEll(x,y,z,-3.5,2,3.4,2.5,2.4,2.8)||inEll(x,y,z,3.5,2,3.4,2.5,2.4,2.8))col='#a5692a';
-      if(inEll(x,y,z,0,16,0.5,4.8,4.8,4.4))col='#a5692a';
-      if(inEll(x,y,z,-4,20.5,0.5,2,2,1.6)||inEll(x,y,z,4,20.5,0.5,2,2,1.6))col='#a5692a';
-      if(inEll(x,y,z,0,14.6,4.3,2.2,1.8,1.4))col='#d9a05e';
-      if(inEll(x,y,z,-1.8,17,4.4,0.8,0.8,0.8)||inEll(x,y,z,1.8,17,4.4,0.8,0.8,0.8))col='#26262e';
-      if(inEll(x,y,z,0,15,5.6,0.9,0.7,0.7))col='#26262e';
-    }else{ // duck
-      if(inEll(x,y,z,0,5.5,-1,5.5,5,7))col='#ffd633';
-      if(inEll(x,y,z,-5.4,6,-1,1.7,3,4.5)||inEll(x,y,z,5.4,6,-1,1.7,3,4.5))col='#f6c716';
-      if(inEll(x,y,z,0,6.5,-7.8,2.6,2.4,2.4))col='#ffd633';
-      if(inEll(x,y,z,0,14,3,4,4,4))col='#ffd633';
-      if(inEll(x,y,z,0,13,7.6,1.6,0.9,2.6))col='#ff8c1a';
-      if(inEll(x,y,z,-1.7,15.4,5.6,0.8,0.8,0.8)||inEll(x,y,z,1.7,15.4,5.6,0.8,0.8,0.8))col='#26262e';
-    }
-    if(col)vox.push({x,y,z,c:jitter(col,0.04)});
-  }
-  return vox;
-}
-function makeGiant(x,z,type,vs){
-  const model=buildGiantModel(type);
-  const o=newObj('giant',x,z,10,13,model.length*0.05);
-  o.color=type==='duck'?'#ffd633':(type==='bear'?'#a5692a':'#dfe0e6');
-  o.vox=model.map(v=>({lx:v.x*vs,ly:(v.y+0.5)*vs,lz:v.z*vs,c:v.c}));
-  o.h=33*vs;o.sinkY=0;o.ptr=0;o.acc=0;
-  o.order=o.vox.map((_,i)=>i).sort((a,b)=>(o.vox[a].ly-o.vox[b].ly)||(Math.random()-0.5));
-  const m=new THREE.InstancedMesh(boxGeo,lambert.clone(),o.vox.length);
-  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  o.vox.forEach((v,i)=>{
-    dummy.position.set(v.lx,v.ly,v.lz);dummy.rotation.set(0,0,0);
-    dummy.scale.setScalar(vs*1.02);dummy.updateMatrix();
-    m.setMatrixAt(i,dummy.matrix);m.setColorAt(i,v.c);
-  });
-  m.position.set(x,0,z);
-  m.rotation.y=rand(0,6.28);
-  scene.add(m);o.mesh=m;
-  return o;
-}
-
-/* ---------- build the city ---------- */
-{
-  const giantBlocks=[];
-  while(giantBlocks.length<3){
-    const b=irand(0,NB*NB-1);
-    const bx=b%NB,bz=Math.floor(b/NB);
-    if(Math.abs(bx-2.5)<1&&Math.abs(bz-2.5)<1)continue; // keep start area clear
-    if(!giantBlocks.includes(b))giantBlocks.push(b);
-  }
-  const types=['bunny','bear','duck'];
-  let gi=0;
-  for(let bz=0;bz<NB;bz++)for(let bx=0;bx<NB;bx++){
-    const ox=bx*P+RW,oz=bz*P+RW;         // block interior origin
-    const cx=ox+ (P-RW)/2, cz=oz+(P-RW)/2; // block center
-    const bIdx=bz*NB+bx;
-    if(giantBlocks.includes(bIdx)){
-      makeGiant(cx,cz,types[gi++],rand(0.95,1.15));
-      for(let i=0;i<5;i++)makeTree(ox+rand(3,42),oz+pick([rand(3,10),rand(36,42)]));
-      for(let i=0;i<4;i++)makePerson(ox+rand(3,43),oz+rand(3,43));
-      continue;
-    }
-    const nB=Math.random()<0.75?2:1;
-    if(nB===1){
-      makeBuilding(cx,cz,rand(14,20),rand(14,20),rand(9,24));
-    }else{
-      makeBuilding(ox+12,oz+rand(10,34),rand(11,16),rand(11,16),rand(8,22));
-      makeBuilding(ox+33,oz+rand(10,34),rand(10,14),rand(10,14),rand(8,22));
-    }
-    const nT=irand(2,4);
-    for(let i=0;i<nT;i++){
-      makeTree(ox+rand(3,43),oz+pick([rand(2,7),rand(39,44)]));
-    }
-    for(let i=0;i<irand(3,5);i++)makePerson(ox+rand(2,44),oz+rand(2,44));
-  }
-  for(let i=0;i<40;i++)makeCar(Math.random()<0.5?'x':'z',irand(0,NB),Math.random()<0.5?0:1);
-  statMesh.count=statCounter.n;dynMesh.count=dynCounter.n;
-  statMesh.instanceMatrix.needsUpdate=true;
-  if(statMesh.instanceColor)statMesh.instanceColor.needsUpdate=true;
-}
-
-/* ---------- debris pool ---------- */
-const DCAP=5000;
-const debrisMesh=makeInst(DCAP,true);
-const slots=[];for(let i=0;i<DCAP;i++)slots.push({});
-let dAct=0;
-const tmpC=new THREE.Color();
-function spawnDebris(x,y,z,vx,vy,vz,size,color){
-  if(dAct>=DCAP)return;
-  const s=slots[dAct];
-  s.x=x;s.y=y;s.z=z;s.vx=vx;s.vy=vy;s.vz=vz;s.s=size;
-  s.rot=rand(0,6.28);s.vr=rand(-6,6);s.age=0;
-  s.col=(s.col||new THREE.Color());
-  if(color.isColor)s.col.copy(color);else s.col.set(color);
-  debrisMesh.setColorAt(dAct,s.col);
-  dAct++;
-}
-function killDebris(i){
-  dAct--;
-  if(i!==dAct){const a=slots[i];slots[i]=slots[dAct];slots[dAct]=a;
-    debrisMesh.setColorAt(i,slots[i].col);}
-}
-function updateDebris(dt){
-  for(let i=0;i<dAct;i++){
-    const s=slots[i];
-    s.age+=dt;
-    const dx=hole.x-s.x,dz=hole.z-s.z,d=Math.hypot(dx,dz);
-    const pullR=hole.r*2.6+4;
-    if(d<pullR&&d>0.01){
-      const a=(110*(1-d/pullR)+30)*dt/d;
-      s.vx+=dx*a;s.vz+=dz*a;
-    }
-    s.vy-=42*dt;
-    s.x+=s.vx*dt;s.y+=s.vy*dt;s.z+=s.vz*dt;
-    s.rot+=s.vr*dt;
-    const inHole=d<hole.r*0.92;
-    if(!inHole&&s.y<s.s/2){
-      s.y=s.s/2;
-      if(s.vy<-3)s.vy*=-0.3;else s.vy=0;
-      s.vx*=0.92;s.vz*=0.92;
-    }
-    if(s.y<-18||s.age>7){killDebris(i);i--;continue}
-    dummy.position.set(s.x,s.y,s.z);
-    dummy.rotation.set(s.rot*0.6,s.rot,0);
-    dummy.scale.setScalar(s.s*(s.age>6?Math.max(0.01,1-(s.age-6)):1));
-    dummy.updateMatrix();
-    debrisMesh.setMatrixAt(i,dummy.matrix);
-  }
-  debrisMesh.count=dAct;
-  debrisMesh.instanceMatrix.needsUpdate=true;
-  if(debrisMesh.instanceColor)debrisMesh.instanceColor.needsUpdate=true;
-}
-
-/* ---------- audio ---------- */
-let AC=null;
-function ensureAudio(){
-  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}
-  if(AC&&AC.state==='suspended')AC.resume();
-}
-function tone(f0,f1,dur,type,vol){
-  if(!AC)return;
-  const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
-  o.type=type;o.frequency.setValueAtTime(Math.max(1,f0),t);
-  o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+dur);
-  g.gain.setValueAtTime(vol,t);
-  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-  o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+0.02);
-}
-const popSnd=()=>{const f=300+Math.min(combo,60)*12;tone(f*1.5,f*0.7,0.1,'triangle',0.08)};
-const rumbleSnd=()=>{tone(80,26,0.9,'sawtooth',0.22);tone(50,20,1.0,'sine',0.28)};
-let giantSndT=0;
-
-/* ---------- eating / growth ---------- */
-function credit(v){
-  eatenValue+=v;
-  combo++;comboTimer=1.1;
-  hole.tr=Math.min(30,Math.sqrt(hole.tr*hole.tr+2.2*v));
-  if(!hintGone){hintGone=true;document.getElementById('hint').className='gone'}
-}
-function objDead(o){
-  eatenCount++;
-  if(eatenCount>=totalCount&&!won){won=true;
-    document.getElementById('winStats').textContent=
-      totalCount+' things swallowed in '+fmtTime(time)+' — final hole size '+hole.r.toFixed(1);
-    document.getElementById('win').style.display='flex';
-    tone(523,1046,0.5,'sine',0.15);
-  }
-}
-function fmtTime(t){const m=Math.floor(t/60),s=Math.floor(t%60);
-  return m+':'+(s<10?'0':'')+s}
-
-/* ---------- object updates ---------- */
-function updateObjects(dt){
-  for(const o of objects){
-    if(o.state==='dead')continue;
-    const dx=o.x-hole.x,dz=o.z-hole.z,d=Math.hypot(dx,dz);
-
-    if(o.kind==='giant'){
-      if(o.ptr<o.order.length&&hole.r>=o.need&&d<hole.r+o.r0*0.9){
-        o.acc+=380*dt;
-        let n=Math.floor(o.acc);o.acc-=n;
-        giantSndT-=dt;
-        if(n>0&&giantSndT<=0){giantSndT=0.12;tone(200,90,0.12,'sawtooth',0.05)}
-        while(n-->0&&o.ptr<o.order.length){
-          const vi=o.order[o.ptr++];
-          const v=o.vox[vi];
-          o.mesh.setMatrixAt(vi,ZERO_M);
-          const wp=new THREE.Vector3(v.lx,v.ly,v.lz)
-            .applyAxisAngle(new THREE.Vector3(0,1,0),o.mesh.rotation.y)
-            .add(o.mesh.position);
-          const hx=hole.x-wp.x,hz=hole.z-wp.z,hd=Math.hypot(hx,hz)||1;
-          spawnDebris(wp.x,Math.max(0.6,wp.y),wp.z,
-            hx/hd*rand(8,20)+rand(-3,3),rand(2,9),hz/hd*rand(8,20)+rand(-3,3),
-            rand(0.8,1.25),v.c);
-          credit(0.05);
-        }
-        o.mesh.instanceMatrix.needsUpdate=true;
-        const frac=o.ptr/o.order.length;
-        o.mesh.position.y=-o.h*frac*0.8;
-        if(o.ptr>=o.order.length){o.state='dead';scene.remove(o.mesh);objDead(o);popSnd()}
-      }
-      continue;
-    }
-
-    if(o.state==='idle'){
-      if(o.kind==='person'){
-        const fleeR=hole.r*2.2+6;
-        if(d<fleeR&&d>0.01){
-          o.yaw=Math.atan2(dx,dz);
-          o.x+=Math.sin(o.yaw)*6*dt;o.z+=Math.cos(o.yaw)*6*dt;
-        }else{
-          o.wtimer-=dt;
-          if(o.wtimer<=0){o.wtimer=rand(1.5,4);o.yaw=rand(0,6.28)}
-          o.x+=Math.sin(o.yaw)*o.speed*dt;o.z+=Math.cos(o.yaw)*o.speed*dt;
-        }
-        o.x=clamp(o.x,2,CITY-2);o.z=clamp(o.z,2,CITY-2);
-        const bob=Math.abs(Math.sin(time*9+o.phase))*0.16;
-        writeObjMatrices(dynMesh,o,o.x,bob,o.z,o.yaw,1);
-      }else if(o.kind==='car'){
-        if(o.axis==='x')o.x+=o.speed*dt;else o.z+=o.speed*dt;
-        if(o.x>CITY+18)o.x=-18;if(o.x<-18)o.x=CITY+18;
-        if(o.z>CITY+18)o.z=-18;if(o.z<-18)o.z=CITY+18;
-        writeObjMatrices(dynMesh,o,o.x,0,o.z,o.yaw,1);
-      }
-      const grab=hole.r*0.9+o.r0*0.4;
-      if(d<grab&&hole.r>=o.need){
-        if(o.kind==='building'){o.state='sinking';o.sy=0;rumbleSnd()}
-        else{o.state='falling';o.t=0;o.sx=o.x;o.sz=o.z}
-      }
-    }
-    else if(o.state==='falling'){
-      o.t+=dt/0.6;
-      const e=Math.min(1,o.t*1.15);
-      const px=o.sx+(hole.x-o.sx)*e,pz=o.sz+(hole.z-o.sz)*e;
-      const py=-10*o.t*o.t;
-      const sc=Math.max(0.05,1-o.t*0.9);
-      const mesh=(o.kind==='tree')?statMesh:dynMesh;
-      writeObjMatrices(mesh,o,px,py,pz,(o.yaw||0)+o.t*o.spin,sc);
-      if(o.kind==='tree')statMesh.instanceMatrix.needsUpdate=true;
-      if(o.t>=1){
-        o.state='dead';hideObj(mesh,o);
-        if(o.kind==='tree')statMesh.instanceMatrix.needsUpdate=true;
-        credit(o.value);objDead(o);popSnd();
-        for(let i=0;i<5;i++)
-          spawnDebris(hole.x+rand(-1,1),0.8,hole.z+rand(-1,1),
-            rand(-4,4),rand(3,8),rand(-4,4),rand(0.4,0.7),o.color);
-      }
-    }
-    else if(o.state==='sinking'){
-      o.sy+=(o.h+5)*dt/1.5;
-      const jx=rand(-0.35,0.35),jz=rand(-0.35,0.35);
-      writeObjMatrices(statMesh,o,o.x+jx,-o.sy,o.z+jz,0,1);
-      statMesh.instanceMatrix.needsUpdate=true;
-      for(let i=0;i<3;i++){
-        const a=rand(0,6.28),rr=o.r0*rand(0.4,0.9);
-        spawnDebris(o.x+Math.cos(a)*rr,rand(0.5,Math.max(1,o.h-o.sy)),o.z+Math.sin(a)*rr,
-          rand(-6,6),rand(2,8),rand(-6,6),rand(0.7,1.2),
-          Math.random()<0.75?o.color:'#eef3f8');
-      }
-      if(o.sy>o.h+4){
-        o.state='dead';hideObj(statMesh,o);statMesh.instanceMatrix.needsUpdate=true;
-        credit(o.value);objDead(o);popSnd();
-      }
-    }
-  }
-  dynMesh.instanceMatrix.needsUpdate=true;
-}
-
-/* ---------- input: hole under finger ---------- */
-const raycaster=new THREE.Raycaster();
-const ndc=new THREE.Vector2();
-let holding=false;
-function pointToGround(clientX,clientY){
-  ndc.set(clientX/innerWidth*2-1,-(clientY/innerHeight)*2+1);
-  raycaster.setFromCamera(ndc,camera);
-  const o=raycaster.ray.origin,dir=raycaster.ray.direction;
-  if(Math.abs(dir.y)<1e-5)return null;
-  const t=-o.y/dir.y;
-  if(t<0)return null;
-  return {x:o.x+dir.x*t,z:o.z+dir.z*t};
-}
-canvas.addEventListener('pointerdown',e=>{
-  ensureAudio();holding=true;
-  const p=pointToGround(e.clientX,e.clientY);
-  if(p){hole.tx=clamp(p.x,BOUND_LO,BOUND_HI);hole.tz=clamp(p.z,BOUND_LO,BOUND_HI)}
-  try{canvas.setPointerCapture(e.pointerId)}catch(err){}
-});
-canvas.addEventListener('pointermove',e=>{
-  if(!holding)return;
-  const p=pointToGround(e.clientX,e.clientY);
-  if(p){hole.tx=clamp(p.x,BOUND_LO,BOUND_HI);hole.tz=clamp(p.z,BOUND_LO,BOUND_HI)}
-});
-addEventListener('pointerup',()=>holding=false);
-addEventListener('pointercancel',()=>holding=false);
-const keys={};
-addEventListener('keydown',e=>{
-  const k=e.key.toLowerCase();keys[k]=true;
-  if(k==='r')location.reload();
-  if(k.indexOf('arrow')===0)e.preventDefault();
-});
-addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
-addEventListener('wheel',e=>{camZoom=clamp(camZoom+e.deltaY*0.001,0.6,1.9)},{passive:true});
-addEventListener('contextmenu',e=>e.preventDefault());
-
-/* ---------- HUD ---------- */
-const pPct=document.getElementById('pPct'),pSize=document.getElementById('pSize'),
-      pCombo=document.getElementById('pCombo');
-function updateHud(){
-  pPct.textContent='City devoured: '+Math.floor(eatenValue/totalValue*100)+'%';
-  pSize.textContent='🕳 '+hole.r.toFixed(1);
-  if(combo>=5){pCombo.style.display='';pCombo.textContent='COMBO x'+combo}
-  else pCombo.style.display='none';
-}
-
-/* ---------- main loop ---------- */
-let last=performance.now();
-function frame(now){
-  const dt=Math.min(0.05,(now-last)/1000);last=now;
-  if(!won)time+=dt;
-
-  let kx=0,kz=0;
-  if(keys['a']||keys['arrowleft'])kx-=1;
-  if(keys['d']||keys['arrowright'])kx+=1;
-  if(keys['w']||keys['arrowup'])kz-=1;
-  if(keys['s']||keys['arrowdown'])kz+=1;
-  if(kx||kz){const l=Math.hypot(kx,kz);
-    hole.tx=clamp(hole.tx+kx/l*70*dt,BOUND_LO,BOUND_HI);
-    hole.tz=clamp(hole.tz+kz/l*70*dt,BOUND_LO,BOUND_HI)}
-
-  {
-    const hdx=hole.tx-hole.x,hdz=hole.tz-hole.z,hd=Math.hypot(hdx,hdz);
-    if(hd>1e-4){
-      const maxV=26+hole.r*0.9;               // hole glide speed cap (units/s)
-      const step=Math.min(hd,maxV*dt);
-      hole.x+=hdx/hd*step;hole.z+=hdz/hd*step;
-    }
-  }
-  hole.r+=(hole.tr-hole.r)*Math.min(1,dt*3);
-
-  groundUniforms.uHole.value.set(hole.x,hole.z);
-  groundUniforms.uR.value=hole.r;
-  holeGrp.position.set(hole.x,0,hole.z);
-  shaft.scale.set(hole.r,1,hole.r);
-  shaftBottom.scale.set(hole.r,1,hole.r);
-  rimWhite.scale.set(hole.r,1,hole.r);
-  rimDark.scale.set(hole.r,1,hole.r);
-
-  updateObjects(dt);
-  updateDebris(dt);
-  comboTimer-=dt;if(comboTimer<=0)combo=0;
-
-  const D=(38+hole.r*2.8)*camZoom;
-  const cx=hole.x,cz=hole.z+D*0.62,cy=D*0.95;
-  camera.position.x+=(cx-camera.position.x)*Math.min(1,dt*5);
-  camera.position.y+=(cy-camera.position.y)*Math.min(1,dt*5);
-  camera.position.z+=(cz-camera.position.z)*Math.min(1,dt*5);
-  camera.lookAt(hole.x,0,hole.z-hole.r*0.4);
-
-  updateHud();
-  renderer.render(scene,camera);
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-</script>
-<script>
-setTimeout(function(){
-  if(!window.__threeOk)document.getElementById('err').style.display='flex';
-},6000);
-</script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>
