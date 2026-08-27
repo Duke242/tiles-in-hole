@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { funnelY, FUNNEL_OUT } from './tune.js';
+import { funnelY } from './tune.js';
 
 const GEO = new THREE.BoxGeometry(1, 1, 1);
 const _o = new THREE.Object3D();
@@ -70,7 +70,6 @@ export class Debris {
 
   update(dt, hole) {
     const { x: hx, z: hz, r } = hole;
-    const pullR = r * FUNNEL_OUT + 6;
     for (let i = 0; i < this.n; i++) {
       const p = this.pool[i];
       p.age += dt;
@@ -88,16 +87,9 @@ export class Debris {
         continue;
       }
 
-      const dx = hx - p.x, dz = hz - p.z;
-      const d = Math.hypot(dx, dz);
-      if (d < pullR && d > 0.01) {
-        const grip = 1 - d / pullR;
-        const inward = (150 * grip + 26) * dt / d;
-        p.vx += dx * inward; p.vz += dz * inward;
-        // tangential swirl, strongest right at the rim
-        const tangent = 90 * grip * grip * dt / d;
-        p.vx += -dz * tangent; p.vz += dx * tangent;
-      }
+      // Rubble is never pulled in; it just falls, and drops through wherever
+      // the ground is missing.
+      const d = Math.hypot(hx - p.x, hz - p.z);
       p.vy -= 46 * dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
       p.rot += p.vr * dt;

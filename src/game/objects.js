@@ -11,7 +11,6 @@ const SINKERS = new Set(['house', 'shop', 'lowrise', 'tower']);
 export function updateObjects(dt, ctx) {
   const { world, hole, debris, audio, fx, time } = ctx;
   const { r, x: hx, z: hz } = hole.state;
-  const funnelR = r * FUNNEL_OUT;
 
   for (const o of world.objects) {
     if (o.state === 'gone') continue;
@@ -26,29 +25,26 @@ export function updateObjects(dt, ctx) {
         else if (o.axis) stepVehicle(dt, o);
 
         const eligible = r >= o.need;
-        const bite = r * 0.95 + o.radius * 0.35;
 
-        if (eligible && d < bite) {
+        // Nothing is dragged in. The ground simply stops being there:
+        // once the hole is under an object, it falls.
+        if (eligible && d < r * 0.95) {
           if (SINKERS.has(o.kind)) {
             o.state = 'sinking'; o.sink = 0;
             audio.rumble();
             fx.shake(o.kind === 'tower' ? 0.75 : 0.4);
           } else {
-            o.state = 'sliding';
-            o.vx = -dx * 0.4; o.vz = -dz * 0.4;
+            o.state = 'falling';
+            o.fallV = 0;
+            o.spinX = (Math.random() - 0.5) * 4;
+            o.spinZ = (Math.random() - 0.5) * 4;
+            o.t = 0;
           }
           break;
         }
 
-        // Inside the crater but not swallowed yet: things tip and slide.
-        if (eligible && !SINKERS.has(o.kind) && d < r * 1.9 + o.radius * 0.5) {
-          o.state = 'sliding';
-          o.vx = 0; o.vz = 0;
-          break;
-        }
-
-        // Too big to eat: shudder and shed dust as a hint to grow more.
-        if (!eligible && d < funnelR + o.radius) {
+        // Too big to eat: shudder as the hole passes, hinting to grow.
+        if (!eligible && d < r + o.radius) {
           o.shake = Math.min(1, o.shake + dt * 3);
           const j = o.shake * 0.06;
           o.field.write(o.ref, o.x + Math.sin(time * 34) * j, 0, o.z + Math.cos(time * 29) * j,
@@ -62,35 +58,14 @@ export function updateObjects(dt, ctx) {
         break;
       }
 
-      case 'sliding': {
-        // Accelerate down the crater wall toward the throat.
-        const pull = (240 * (1 - Math.min(1, d / Math.max(1, r * 2.2))) + 70) * dt / Math.max(0.01, d);
-        o.vx += -dx * pull; o.vz += -dz * pull;
-        // a little swirl so things curve into the pit
-        const swirl = 34 * dt / Math.max(0.01, d);
-        o.vx += -dz * swirl * 0.35; o.vz += dx * swirl * 0.35;
-        o.vx *= 0.985; o.vz *= 0.985;
-        o.x += o.vx * dt; o.z += o.vz * dt;
-
-        const nd = Math.hypot(o.x - hx, o.z - hz);
-        o.y = funnelY(nd, r);
-        // tilt to face downhill
-        const slope = Math.min(1, (r * 2.0 - nd) / Math.max(1, r * 2.0)) * 1.15;
-        const ang = Math.atan2(o.z - hz, o.x - hx);
-        o.pitch = Math.sin(ang) * slope;
-        o.roll = -Math.cos(ang) * slope;
+      case 'falling': {
         o.t += dt;
-
-        if (nd < r * 0.85) {
-          // over the edge: drop, shrink, vanish
-          o.y -= 14 * dt * (1 + o.t);
-          o.scale = Math.max(0.03, o.scale - dt * 1.9);
-          if (o.scale <= 0.06 || o.y < -r * 3) {
-            swallow(o, ctx);
-            break;
-          }
-        }
-        o.field.write(o.ref, o.x, o.y, o.z, o.yaw + o.t * o.spin * 0.6, o.scale, o.pitch, o.roll);
+        o.fallV += 42 * dt;
+        o.y -= o.fallV * dt;
+        o.pitch += o.spinX * dt;
+        o.roll += o.spinZ * dt;
+        o.field.write(o.ref, o.x, o.y, o.z, o.yaw, 1, o.pitch, o.roll);
+        if (o.y < -(r * 1.1 + 7)) swallow(o, ctx);
         break;
       }
 
@@ -103,7 +78,7 @@ export function updateObjects(dt, ctx) {
           const a = Math.random() * 6.28, rr = o.radius * (0.4 + Math.random() * 0.7);
           debris.spawn(o.x + Math.cos(a) * rr, Math.max(0.6, o.height - o.sink) * Math.random(),
             o.z + Math.sin(a) * rr,
-            Math.cos(a) * 8, 3 + Math.random() * 9, Math.sin(a) * 8,
+            Math.cos(a) * 5, 2 + Math.random() * 7, Math.sin(a) * 5,
             0.6 + Math.random() * 0.9, Math.random() < 0.7 ? o.color : '#dfe8f0');
         }
         if (o.sink > o.height + 5) { swallow(o, ctx); }
@@ -156,8 +131,7 @@ function swallow(o, ctx) {
   progress.credit(o);
   const heavy = o.value >= 18;
   if (heavy) { audio.boom(); fx.shake(0.5); } else { audio.pop(progress.combo); audio.crunch(); }
-  debris.puff(hole.state.x, -hole.state.r * 0.6, hole.state.z, o.color,
-    heavy ? 14 : 5, heavy ? 12 : 6);
+  debris.puff(o.x, 0.8, o.z, o.color, heavy ? 12 : 4, heavy ? 8 : 4);
 }
 
 function updateGiant(dt, o, d, ctx) {
@@ -167,7 +141,7 @@ function updateGiant(dt, o, d, ctx) {
 
   if (o.state === 'gone') return;
 
-  const reach = r + o.radius * 0.92;
+  const reach = o.radius * 0.95;   // the hole must be under the statue's base
   if (r < o.need) {
     if (d < reach + 4) {
       const j = Math.sin(time * 26) * 0.25;
@@ -194,12 +168,8 @@ function updateGiant(dt, o, d, ctx) {
     g.mesh.setMatrixAt(vi, zero);
     _v.set(v.lx, v.ly, v.lz).applyAxisAngle(new THREE.Vector3(0, 1, 0), g.yaw)
       .add(g.mesh.position);
-    const tx = hole.state.x - _v.x, tz = hole.state.z - _v.z;
-    const td = Math.hypot(tx, tz) || 1;
     debris.spawn(_v.x, Math.max(0.5, _v.y), _v.z,
-      (tx / td) * (10 + Math.random() * 18) + (Math.random() - 0.5) * 5,
-      2 + Math.random() * 10,
-      (tz / td) * (10 + Math.random() * 18) + (Math.random() - 0.5) * 5,
+      (Math.random() - 0.5) * 7, 1 + Math.random() * 4, (Math.random() - 0.5) * 7,
       g.voxelSize * (0.85 + Math.random() * 0.35), v.color);
     hole.grow(0.06);
     progress.creditRaw(0.06);

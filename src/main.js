@@ -67,7 +67,7 @@ function updateCamera(dt) {
   const dist = (46 + r * 2.5) * input.zoom * aspectComp;
   const tx = hole.state.x + hole.state.vx * 0.22;
   const tz = hole.state.z + hole.state.vz * 0.22;
-  camPos.set(tx, dist * 0.80, tz + dist * 0.80);
+  camPos.set(tx, dist * 0.92, tz + dist * 0.72);
   camLook.set(hole.state.x, -r * 0.4, hole.state.z - r * 0.35);
   if (!camInit) { camera.position.copy(camPos); camInit = true; }
   const k = Math.min(1, dt * 4.5);
@@ -84,7 +84,7 @@ function updateCamera(dt) {
 
   occlusion.uCamPos.value.copy(camera.position);
   occlusion.uFocus.value.set(hole.state.x, 2.0, hole.state.z);
-  occlusion.uTunnel.value = hole.state.r * 0.85 + 4.5;
+  occlusion.uTunnel.value = hole.state.r * 0.5 + 4.0;
 }
 
 // --- overlays ---------------------------------------------------------------

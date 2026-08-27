@@ -32,9 +32,9 @@ function patchOcclusion(mat) {
         vec3 av = uFocus - uCamPos;
         float t = clamp(dot(vOccPos - uCamPos, av) / max(0.0001, dot(av, av)), 0.0, 1.0);
         float dperp = distance(vOccPos, uCamPos + av * t);
-        float radius = uTunnel * mix(0.85, 0.34, t);
+        float radius = uTunnel * mix(0.75, 0.3, t);
         if (t > 0.02 && t < 0.97 && dperp < radius) {
-          float a = smoothstep(radius * 0.55, radius, dperp);
+          float a = smoothstep(radius * 0.72, radius, dperp);
           float dith = bayer2(0.5 * gl_FragCoord.xy) * 0.25 + bayer2(gl_FragCoord.xy);
           if (a < dith) discard;
         }
