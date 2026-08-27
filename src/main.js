@@ -60,7 +60,10 @@ let camInit = false;
 
 function updateCamera(dt) {
   const r = hole.state.r;
-  const dist = (44 + r * 2.7) * input.zoom;
+  // Portrait phones crop horizontally; pull back so the framing matches
+  // what a landscape/desktop player sees.
+  const aspectComp = Math.max(1, Math.sqrt(1.4 / Math.max(0.35, camera.aspect)));
+  const dist = (44 + r * 2.7) * input.zoom * aspectComp;
   const tx = hole.state.x + hole.state.vx * 0.22;
   const tz = hole.state.z + hole.state.vz * 0.22;
   camPos.set(tx, dist * 1.06, tz + dist * 0.62);
@@ -80,6 +83,7 @@ function updateCamera(dt) {
 }
 
 // --- overlays ---------------------------------------------------------------
+const hintEl = document.getElementById('hint');
 const startEl = document.getElementById('start');
 const winEl = document.getElementById('win');
 let running = false;
@@ -131,6 +135,9 @@ function frame(now) {
   if (!running) { renderer.render(scene, camera); return; }
 
   ctx.time += dt;
+  if (hintEl && (progress.state.count > 2 || ctx.time > 8)) {
+    hintEl.style.opacity = '0';
+  }
   keySteer(dt);
   hole.update(dt, { x: input.tx, z: input.tz });
   ground.setHole(hole.state.x, hole.state.z, hole.state.r);
