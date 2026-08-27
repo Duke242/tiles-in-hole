@@ -95,22 +95,37 @@ export function createGiant(scene, type, x, z, voxelSize) {
   const sculpt = SCULPTS[type];
   const vox = [];
   const c = new THREE.Color();
+  const filled = new Set();
+  const key = (a, b2, d) => a + ',' + b2 + ',' + d;
   for (let vx = -11; vx <= 11; vx++) {
     for (let vy = 0; vy <= 34; vy++) {
       for (let vz = -11; vz <= 11; vz++) {
         const hex = sculpt([vx, vy, vz]);
         if (!hex) continue;
-        c.set(hex);
-        // Tiny per-voxel value jitter keeps the big flat surfaces alive.
-        const j = 1 + (Math.random() - 0.5) * 0.07;
-        vox.push({
-          lx: vx * voxelSize,
-          ly: (vy + 0.5) * voxelSize,
-          lz: vz * voxelSize,
-          color: new THREE.Color(c.r * j, c.g * j, c.b * j),
-        });
+        filled.add(key(vx, vy, vz));
+        vox.push({ vx, vy, vz, hex });
       }
     }
+  }
+
+  // Baked ambient occlusion: a tile walled in by neighbours sits in a crevice
+  // and goes darker, which is what makes the statue read as thousands of
+  // separate tiles rather than one solid lump.
+  for (const v of vox) {
+    let n = 0;
+    for (let ax = -1; ax <= 1; ax++)
+      for (let ay = -1; ay <= 1; ay++)
+        for (let az = -1; az <= 1; az++) {
+          if (!ax && !ay && !az) continue;
+          if (filled.has(key(v.vx + ax, v.vy + ay, v.vz + az))) n++;
+        }
+    const ao = 1 - 0.42 * Math.pow(n / 26, 1.6);
+    const jitter = 1 + (Math.random() - 0.5) * 0.06;
+    c.set(v.hex);
+    v.color = new THREE.Color(c.r * ao * jitter, c.g * ao * jitter, c.b * ao * jitter);
+    v.lx = v.vx * voxelSize;
+    v.ly = (v.vy + 0.5) * voxelSize;
+    v.lz = v.vz * voxelSize;
   }
 
   const mesh = new THREE.InstancedMesh(BOX, new THREE.MeshLambertMaterial({ color: 0xffffff }), vox.length);
@@ -124,7 +139,7 @@ export function createGiant(scene, type, x, z, voxelSize) {
   vox.forEach((v, i) => {
     _o.position.set(v.lx, v.ly, v.lz);
     _o.rotation.set(0, 0, 0);
-    _o.scale.setScalar(voxelSize * 1.03);
+    _o.scale.setScalar(voxelSize * 0.88);
     _o.updateMatrix();
     mesh.setMatrixAt(i, _o.matrix);
     mesh.setColorAt(i, v.color);
