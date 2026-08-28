@@ -29,7 +29,7 @@ export const HOLE = {
   max: 32,
   baseSpeed: 26,       // units/sec at starting size
   speedPerR: 0.85,     // extra speed per unit of radius
-  accel: 8,            // how quickly velocity converges on desired
+  accel: 26,           // how quickly velocity converges on desired
   growK: 0.3,          // r' = sqrt(r^2 + growK * value)
 };
 

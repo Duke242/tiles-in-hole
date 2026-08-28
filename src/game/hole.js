@@ -82,7 +82,7 @@ export function createHole(scene) {
     // so the hole settles instead of jittering around the finger.
     let dvx = 0, dvz = 0;
     if (d > 1e-4) {
-      const want = Math.min(maxV, d * 6);
+      const want = Math.min(maxV, d * 14);
       dvx = (dx / d) * want;
       dvz = (dz / d) * want;
     }
@@ -93,7 +93,7 @@ export function createHole(scene) {
     state.z = THREE.MathUtils.clamp(state.z + state.vz * dt, BOUND.lo, BOUND.hi);
     state.speed = Math.hypot(state.vx, state.vz);
 
-    state.r += (state.tr - state.r) * Math.min(1, dt * 3);
+    state.r += (state.tr - state.r) * Math.min(1, dt * 4.5);
 
     const lip = -FUNNEL_DEPTH * state.r;
     group.position.set(state.x, 0, state.z);

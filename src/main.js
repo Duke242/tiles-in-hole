@@ -6,11 +6,12 @@ import { buildWorld } from './world/build.js';
 import { createGround } from './world/ground.js';
 import { createHole } from './game/hole.js';
 import { Debris } from './game/debris.js';
+import { Tiles } from './game/tiles.js';
 import { updateObjects } from './game/objects.js';
 import { createProgress } from './game/progress.js';
 import { createHUD } from './ui/hud.js';
 import { HOLE } from './game/tune.js';
-import { WORLD } from './world/build.js';
+import { WORLD, TILE_W, TILE_H } from './world/build.js';
 import { occlusion } from './world/field.js';
 
 const canvas = document.getElementById('c');
@@ -21,6 +22,7 @@ const world = buildWorld(scene);
 const ground = createGround(scene, world.districtTex);
 const hole = createHole(scene);
 const debris = new Debris(scene);
+const tiles = new Tiles(scene, { worldSize: WORLD.size + 60, tileW: TILE_W, tileH: TILE_H });
 const audio = new Audio();
 const hud = createHUD(world);
 
@@ -49,7 +51,7 @@ const progress = createProgress(world,
   () => { hud.toast('Size Up!'); audio.unlockJingle(); },
   (s) => showWin(s));
 
-const ctx = { world, hole, debris, audio, fx, progress, time: 0 };
+const ctx = { world, hole, debris, tiles, audio, fx, progress, time: 0 };
 
 // --- camera -----------------------------------------------------------------
 const camPos = new THREE.Vector3();
@@ -67,7 +69,7 @@ function updateCamera(dt) {
   camPos.set(tx, dist * 0.92, tz + dist * 0.72);
   camLook.set(hole.state.x, -r * 0.4, hole.state.z - r * 0.35);
   if (!camInit) { camera.position.copy(camPos); camInit = true; }
-  const k = Math.min(1, dt * 4.5);
+  const k = Math.min(1, dt * 7);
   camera.position.lerp(camPos, k);
   if (fx.shakeAmt > 0) {
     const a = fx.shakeAmt * (1 + r * 0.03);
@@ -146,6 +148,10 @@ function frame(now) {
   ground.setHole(hole.state.x, hole.state.z, hole.state.r);
 
   updateObjects(dt, ctx);
+  tiles.update(dt, hole.state, () => {
+    hole.grow(0.6);
+    progress.creditRaw(0.6);
+  });
   debris.update(dt, hole.state);
   world.staticField.flush();
   world.dynField.flush();
