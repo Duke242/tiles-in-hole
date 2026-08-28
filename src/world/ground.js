@@ -11,63 +11,10 @@ const CITY_GLSL = /* glsl */`
   uniform float uPitDepth;
 
   vec3 cityColor(vec2 w){
-    float P  = ${CITY.P.toFixed(1)};
-    float RW = ${CITY.RW.toFixed(1)};
-    float N  = ${CITY.N.toFixed(1)};
-
-    vec2 bi = floor(w / P);
-    vec2 f  = w - bi * P;
-
-    if (bi.x < 0.0 || bi.y < 0.0 || bi.x >= N || bi.y >= N) {
-      return vec3(0.22,0.62,0.20);
-    }
-
-    bool rx = f.x < RW;
-    bool rz = f.y < RW;
-
-    if (rx || rz) {
-      vec3 road = vec3(0.145,0.152,0.170);
-      if (rx && rz) return road;                       // intersection stays clean
-
-      if (rz) {                                        // east-west road
-        float edge = min(f.y, RW - f.y);
-        float ix   = min(f.x - RW, P - f.x);           // distance to intersection
-        if (ix < 7.0) {                                // crosswalk bars
-          if (edge > 0.9 && mod(f.y - 0.6, 2.15) < 1.25) return vec3(0.95);
-        } else if (abs(f.y - RW * 0.5) < 0.36 && mod(w.x, 8.0) < 4.2) {
-          return vec3(0.95);                           // white centre dashes
-        }
-        return road;
-      }
-      float edge = min(f.x, RW - f.x);                 // north-south road
-      float iz   = min(f.y - RW, P - f.y);
-      if (iz < 7.0) {
-        if (edge > 0.9 && mod(f.x - 0.6, 2.15) < 1.25) return vec3(0.95);
-      } else if (abs(f.x - RW * 0.5) < 0.36 && mod(w.y, 8.0) < 4.2) {
-        return vec3(0.95);
-      }
-      return road;
-    }
-
-    // Wide pale pavement ringing every block, lightly tiled.
-    float inx = min(f.x - RW, P - f.x);
-    float inz = min(f.y - RW, P - f.y);
-    float edge = min(inx, inz);
-    if (edge < 4.2) {
-      vec3 pave = vec3(0.855,0.845,0.815);
-      if (mod(w.x, 3.6) < 0.16 || mod(w.y, 3.6) < 0.16) pave *= 0.945;
-      if (edge < 0.5) pave *= 0.86;                    // kerb
-      return pave;
-    }
-
-    vec4 dd = texture2D(uDistrict, (bi + 0.5) / N);
-    vec3 base = dd.rgb;
-
-    if (dd.a > 0.5) {                                  // park paths
-      float px = abs(f.x - P * 0.5), pz = abs(f.y - P * 0.5);
-      if (min(px, pz) < 2.8) return vec3(0.82,0.76,0.60);
-    }
-    return base;
+    // Flat saturated lawn, with a whisper of variation so it is not dead flat.
+    vec2 g = floor(w / 26.0);
+    float n = fract(sin(g.x * 12.9898 + g.y * 78.233) * 43758.5453);
+    return vec3(0.278, 0.788, 0.184) * (0.975 + n * 0.05);
   }
 `;
 
@@ -84,7 +31,7 @@ function patchMaterial(mat, uniforms) {
         diffuseColor.rgb = cityColor(vWPos.xz);
         if (uPitDepth > 0.0) {
           float sink = clamp(-vWPos.y / uPitDepth, 0.0, 1.0);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.055,0.042,0.035), pow(sink, 0.33));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.055,0.042,0.035), pow(sink, 0.7));
         }
       `);
   };

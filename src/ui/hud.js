@@ -1,6 +1,7 @@
-import { CITY } from '../game/tune.js';
+import { WORLD } from '../world/build.js';
 
-// DOM overlay: progress, size, combo, unlock toasts and the minimap.
+// Overlay: progress, size, combo, the "Size Up!" flourish, and a minimap of
+// what is still standing.
 export function createHUD(world) {
   const el = (id) => document.getElementById(id);
   const bar = el('barFill');
@@ -13,18 +14,13 @@ export function createHUD(world) {
   const mini = el('mini');
   const mctx = mini.getContext('2d');
 
-  let toastTimer = 0;
-
-  function toast(text, sub) {
+  function toast(text) {
     const d = document.createElement('div');
-    d.className = 'toast';
-    d.innerHTML = `<b>${text}</b>${sub ? `<span>${sub}</span>` : ''}`;
+    d.className = 'sizeup';
+    d.textContent = text;
     toastWrap.appendChild(d);
     requestAnimationFrame(() => d.classList.add('in'));
-    setTimeout(() => {
-      d.classList.remove('in');
-      setTimeout(() => d.remove(), 600);
-    }, 2400);
+    setTimeout(() => { d.classList.remove('in'); setTimeout(() => d.remove(), 500); }, 1500);
   }
 
   function update(progress, hole, nextTier) {
@@ -39,52 +35,34 @@ export function createHUD(world) {
       comboEl.textContent = 'COMBO ×' + s.combo;
     } else comboEl.classList.remove('show');
     const nt = nextTier(hole.state.r);
-    tierEl.textContent = nt
-      ? `Next unlock at size ${nt.r.toFixed(0)} — ${nt.label}`
-      : 'Everything is on the menu';
+    tierEl.textContent = nt ? `Bigger stacks unlock at size ${nt.r.toFixed(0)}`
+                            : 'Nothing left that you cannot swallow';
   }
 
-  // --- minimap ------------------------------------------------------------
   const MS = 132;
   mini.width = MS * 2; mini.height = MS * 2;
   mini.style.width = MS + 'px'; mini.style.height = MS + 'px';
   mctx.scale(2, 2);
-  const scale = MS / (CITY.SPAN + 20);
+  const scale = MS / WORLD.size;
+  const off = WORLD.size / 2;
 
   function drawMini(hole) {
     mctx.clearRect(0, 0, MS, MS);
-    mctx.fillStyle = 'rgba(255,255,255,0.55)';
+    mctx.fillStyle = '#5ec94f';
     mctx.fillRect(0, 0, MS, MS);
-    // blocks
-    for (const b of world.blocks) {
-      mctx.fillStyle = b.giant ? '#b98cf0' : b.kind === 'park' ? '#8ed99a'
-        : b.kind === 'downtown' ? '#9aa2b4' : b.kind === 'commercial' ? '#c9bfa6' : '#a8dcae';
-      const x = (b.bx * CITY.P + CITY.RW + 10) * scale;
-      const y = (b.bz * CITY.P + CITY.RW + 10) * scale;
-      mctx.fillRect(x, y, CITY.INNER * scale, CITY.INNER * scale);
-    }
-    // remaining landmarks
-    mctx.fillStyle = '#3b3f4a';
+    mctx.fillStyle = 'rgba(30,40,60,0.55)';
     for (const o of world.objects) {
       if (o.state === 'gone') continue;
-      if (o.kind === 'tower' || o.kind === 'lowrise' || o.kind === 'shop') {
-        mctx.fillRect((o.x + 10) * scale - 1, (o.z + 10) * scale - 1, 2.2, 2.2);
-      }
+      if (o.count < 4) continue;                       // only the notable stacks
+      const sz = o.count > 24 ? 2.4 : 1.5;
+      mctx.fillRect((o.x + off) * scale - sz / 2, (o.z + off) * scale - sz / 2, sz, sz);
     }
-    mctx.fillStyle = '#7b2ff0';
-    for (const g of world.giants) {
-      if (g.state === 'gone') continue;
-      mctx.beginPath();
-      mctx.arc((g.x + 10) * scale, (g.z + 10) * scale, 3.4, 0, 6.283);
-      mctx.fill();
-    }
-    // hole
-    const hx = (hole.state.x + 10) * scale, hy = (hole.state.z + 10) * scale;
+    const hx = (hole.state.x + off) * scale, hy = (hole.state.z + off) * scale;
     mctx.fillStyle = '#111';
     mctx.beginPath();
-    mctx.arc(hx, hy, Math.max(2.2, hole.state.r * scale), 0, 6.283);
+    mctx.arc(hx, hy, Math.max(2.4, hole.state.r * scale), 0, 6.283);
     mctx.fill();
-    mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.4;
+    mctx.strokeStyle = '#ffdf7a'; mctx.lineWidth = 1.6;
     mctx.stroke();
   }
 

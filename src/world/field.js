@@ -100,6 +100,7 @@ export class Field {
     _obj.scale.setScalar(scale);
     _obj.updateMatrix();
     for (let i = 0; i < ref.locals.length; i++) {
+      if (ref.hidden && ref.hidden.has(i)) continue;
       const l = ref.locals[i];
       if (l.leg && legSwing) {
         _leg.makeTranslation(0, 0, legSwing * l.leg);
@@ -109,6 +110,13 @@ export class Field {
       }
       this.mesh.setMatrixAt(ref.base + i, _m);
     }
+    this.dirty = true;
+  }
+
+  hidePart(ref, i) {
+    if (!ref.hidden) ref.hidden = new Set();
+    ref.hidden.add(i);
+    this.mesh.setMatrixAt(ref.base + i, ZERO);
     this.dirty = true;
   }
 

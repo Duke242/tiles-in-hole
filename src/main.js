@@ -9,7 +9,8 @@ import { Debris } from './game/debris.js';
 import { updateObjects } from './game/objects.js';
 import { createProgress } from './game/progress.js';
 import { createHUD } from './ui/hud.js';
-import { CITY, HOLE, BOUND } from './game/tune.js';
+import { HOLE } from './game/tune.js';
+import { WORLD } from './world/build.js';
 import { occlusion } from './world/field.js';
 
 const canvas = document.getElementById('c');
@@ -23,9 +24,9 @@ const debris = new Debris(scene);
 const audio = new Audio();
 const hud = createHUD(world);
 
-// Start on a road intersection near the middle of town.
-const startX = CITY.P * 2 + CITY.RW / 2;
-const startZ = CITY.P * 5 + CITY.RW / 2;
+// Start in the clearing at the middle of the field.
+const startX = 0;
+const startZ = 0;
 hole.place(startX, startZ);
 
 const input = createInput(canvas, camera, () => audio.unlock());
@@ -36,11 +37,7 @@ input.tx = startX; input.tz = startZ;
   const q = new URLSearchParams(location.search);
   const r = parseFloat(q.get('r'));
   if (r > 0) { hole.state.r = hole.state.tr = Math.min(r, HOLE.max); }
-  if (q.get('g') && world.giants.length) {
-    const g = world.giants[0];
-    hole.place(g.x - g.radius - 6, g.z);
-    input.tx = g.x; input.tz = g.z;
-  }
+
 }
 
 const fx = {
@@ -49,7 +46,7 @@ const fx = {
 };
 
 const progress = createProgress(world,
-  (tier) => { hud.toast('UNLOCKED', tier.label); audio.unlockJingle(); },
+  () => { hud.toast('Size Up!'); audio.unlockJingle(); },
   (s) => showWin(s));
 
 const ctx = { world, hole, debris, audio, fx, progress, time: 0 };
@@ -64,7 +61,7 @@ function updateCamera(dt) {
   // Portrait phones crop horizontally; pull back so the framing matches
   // what a landscape/desktop player sees.
   const aspectComp = Math.max(1, Math.sqrt(1.4 / Math.max(0.35, camera.aspect)));
-  const dist = (46 + r * 2.5) * input.zoom * aspectComp;
+  const dist = (34 + r * 2.6) * input.zoom * aspectComp;
   const tx = hole.state.x + hole.state.vx * 0.22;
   const tz = hole.state.z + hole.state.vz * 0.22;
   camPos.set(tx, dist * 0.92, tz + dist * 0.72);
@@ -124,8 +121,9 @@ function keySteer(dt) {
   if (!kx && !kz) return;
   const l = Math.hypot(kx, kz);
   const v = (HOLE.baseSpeed + hole.state.r * HOLE.speedPerR) * 1.15;
-  input.tx = THREE.MathUtils.clamp(input.tx + (kx / l) * v * dt, BOUND.lo, BOUND.hi);
-  input.tz = THREE.MathUtils.clamp(input.tz + (kz / l) * v * dt, BOUND.lo, BOUND.hi);
+  const lim = WORLD.size / 2;
+  input.tx = THREE.MathUtils.clamp(input.tx + (kx / l) * v * dt, -lim, lim);
+  input.tz = THREE.MathUtils.clamp(input.tz + (kz / l) * v * dt, -lim, lim);
 }
 addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'r') location.reload(); });
 

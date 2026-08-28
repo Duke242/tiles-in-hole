@@ -47,5 +47,5 @@ export function createProgress(world, onUnlock, onWin) {
     return null;
   }
 
-  return { state, credit, creditRaw, update, nextTier };
+  return { state, credit, creditRaw, bump, update, nextTier };
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#8fd8f2">
-<title>Voxel City Hole</title>
+<title>Tiles in Hole</title>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;overflow:hidden;background:#8fd8f2;
@@ -38,6 +38,10 @@
 
   #toasts{position:fixed;top:calc(env(safe-area-inset-top,0px) + 150px);left:0;right:0;
     display:flex;flex-direction:column;align-items:center;gap:8px;z-index:6;pointer-events:none}
+  .sizeup{font-size:46px;font-weight:900;color:#fff;letter-spacing:1px;
+    -webkit-text-stroke:3px #2b2f3a;text-shadow:0 6px 0 rgba(0,0,0,.25);
+    opacity:0;transform:scale(.6);transition:opacity .25s,transform .25s}
+  .sizeup.in{opacity:1;transform:scale(1)}
   .toast{background:linear-gradient(135deg,#7b5cff,#a34dff);color:#fff;
     padding:11px 22px;border-radius:999px;font-weight:800;text-align:center;
     box-shadow:0 8px 24px rgba(90,40,200,.4);opacity:0;transform:translateY(-12px) scale(.9);
@@ -115,9 +119,9 @@
 
 <div id="start" class="overlay">
   <div class="card">
-    <h1><span>VOXEL CITY HOLE</span></h1>
-    <p>A black hole opens under the city. Swallow everything —
-       people, cars, houses, skyscrapers, and finally the giant statues in the parks.</p>
+    <h1><span>TILES IN HOLE</span></h1>
+    <p>Steer the hole under the tile stacks and watch them collapse into it.
+       Every tile you swallow makes the hole bigger.</p>
     <button id="playBtn" class="btn" type="button">Play</button>
     <div class="keys">
       Hold &amp; drag to steer · <kbd>WASD</kbd> also works<br>
@@ -128,7 +132,7 @@
 
 <div id="win" class="overlay hidden">
   <div class="card">
-    <h1><span>CITY DEVOURED</span></h1>
+    <h1><span>FIELD CLEARED</span></h1>
     <p id="winStats"></p>
     <button id="againBtn" class="btn" type="button">Play again</button>
   </div>

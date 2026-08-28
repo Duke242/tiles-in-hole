@@ -8,7 +8,7 @@ export const CITY = {
 CITY.SPAN = CITY.N * CITY.P;
 CITY.INNER = CITY.P - CITY.RW;
 
-export const BOUND = { lo: -26, hi: CITY.SPAN + 26 };
+export const BOUND = { lo: -300, hi: 300 };
 
 // Funnel/crater profile, expressed in multiples of the hole radius so the
 // crater scales with the hole. Baked into the ring geometry AND used by the

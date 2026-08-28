@@ -28,16 +28,34 @@ export function createHole(scene) {
     new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }));
   group.add(floor);
 
-  // Soft dark lip, matching the reference's understated rim.
+  // Bright gold lip with a soft halo bleeding onto the grass.
   const rim = new THREE.Mesh(
-    new THREE.RingGeometry(0.94, 1.06, 96).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x241c16, fog: false }));
+    new THREE.RingGeometry(0.9, 1.12, 96).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xf6e3a8, fog: false }));
   group.add(rim);
 
   const inner = new THREE.Mesh(
-    new THREE.RingGeometry(0.72, 0.95, 96).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0x0b0710, fog: false }));
+    new THREE.RingGeometry(0.78, 0.92, 96).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xd8a63c, fog: false }));
   group.add(inner);
+
+  const glow = new THREE.Mesh(
+    new THREE.RingGeometry(1.05, 1.85, 96).rotateX(-Math.PI / 2),
+    new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, fog: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uT: { value: 0 } },
+      vertexShader: `varying float vR;
+        void main(){ vR = length(position.xz);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      fragmentShader: `varying float vR; uniform float uT;
+        void main(){
+          float a = 1.0 - smoothstep(1.05, 1.85, vR);
+          a *= 0.62 + 0.16 * sin(uT * 3.0);
+          gl_FragColor = vec4(1.0, 0.86, 0.36, a);
+        }`,
+    }));
+  group.add(glow);
 
   // Little orange chevron showing which way the hole is travelling.
   const arrowGeo = new THREE.BufferGeometry();
@@ -87,6 +105,10 @@ export function createHole(scene) {
     rim.scale.set(state.r, 1, state.r);
     inner.position.y = lip + 0.04;
     inner.scale.set(state.r, 1, state.r);
+
+    glow.position.y = lip + 0.03;
+    glow.scale.set(state.r, 1, state.r);
+    glow.material.uniforms.uT.value += 0.016;
 
     const moving = state.speed > 1.5;
     arrow.visible = moving;
