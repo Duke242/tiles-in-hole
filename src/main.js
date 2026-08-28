@@ -6,7 +6,7 @@ import { buildWorld } from './world/build.js';
 import { createGround } from './world/ground.js';
 import { createHole } from './game/hole.js';
 import { Debris } from './game/debris.js';
-import { Tiles } from './game/tiles.js';
+import { Rigid } from './game/rigid.js';
 import { updateObjects } from './game/objects.js';
 import { createProgress } from './game/progress.js';
 import { createHUD } from './ui/hud.js';
@@ -22,7 +22,7 @@ const world = buildWorld(scene);
 const ground = createGround(scene, world.districtTex);
 const hole = createHole(scene);
 const debris = new Debris(scene);
-const tiles = new Tiles(scene, { worldSize: WORLD.size + 60, tileW: TILE_W, tileH: TILE_H });
+let rigid = null;
 const audio = new Audio();
 const hud = createHUD(world);
 
@@ -50,31 +50,13 @@ const progress = createProgress(world,
   () => { hud.toast('Size Up!'); audio.unlockJingle(); },
   (s) => showWin(s));
 
-const ctx = { world, hole, debris, tiles, audio, fx, progress, time: 0 };
+const ctx = { world, hole, debris, rigid: null, audio, fx, progress, time: 0 };
 
 // Inspection handle for automated checks.
 window.__debug = {
-  maxPile: () => { let m = 0; for (const h of tiles.height) if (h > m) m = h; return m; },
-  tileH: () => tiles.tileH,
-  active: () => tiles.nAct,
-  settled: () => tiles.nRest,
-  sample: () => {
-    let over = 0, below = 0, fast = 0, slipMax = 0, ySum = 0, vSum = 0;
-    const hx = hole.state.x, hz = hole.state.z, r = hole.state.r;
-    for (let i = 0; i < tiles.nAct; i++) {
-      const t = tiles.act[i];
-      const dx = t.x - hx, dz = t.z - hz;
-      if (dx * dx + dz * dz < r * r * 0.94) over++;
-      if (t.y < -1) below++;
-      const v = Math.hypot(t.vx, t.vy, t.vz);
-      if (v > 1) fast++;
-      slipMax = Math.max(slipMax, t.slips || 0);
-      ySum += t.y; vSum += v;
-    }
-    const n = Math.max(1, tiles.nAct);
-    return { n: tiles.nAct, over, below, fast, slipMax,
-             avgY: +(ySum / n).toFixed(2), avgV: +(vSum / n).toFixed(2) };
-  },
+  ready: () => !!rigid,
+  active: () => (rigid ? rigid.nAct : 0),
+  settled: () => (rigid ? rigid.nRest : 0),
 };
 
 // --- camera -----------------------------------------------------------------
@@ -116,7 +98,17 @@ const startEl = document.getElementById('start');
 const winEl = document.getElementById('win');
 let running = false;
 
-document.getElementById('playBtn').addEventListener('click', () => {
+const playBtn = document.getElementById('playBtn');
+playBtn.disabled = true;
+playBtn.textContent = 'Loading…';
+Rigid.init().then(() => {
+  rigid = new Rigid(scene, { cube: TILE_W });
+  ctx.rigid = rigid;
+  playBtn.disabled = false;
+  playBtn.textContent = 'Play';
+});
+
+playBtn.addEventListener('click', () => {
   audio.unlock();
   startEl.classList.add('hidden');
   running = true;
@@ -146,7 +138,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (!running) { renderer.render(scene, camera); return; }
+  if (!running || !rigid) { renderer.render(scene, camera); return; }
 
   ctx.time += dt;
   if (hintEl && (progress.state.count > 2 || ctx.time > 8)) {
@@ -156,9 +148,9 @@ function frame(now) {
   ground.setHole(hole.state.x, hole.state.z, hole.state.r);
 
   updateObjects(dt, ctx);
-  tiles.update(dt, hole.state, () => {
-    hole.grow(0.6);
-    progress.creditRaw(0.6);
+  rigid.update(dt, hole.state, () => {
+    hole.grow(1.4);
+    progress.creditRaw(1.4);
   });
   debris.update(dt, hole.state);
   world.staticField.flush();

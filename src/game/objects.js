@@ -3,7 +3,7 @@
 // down after them, which is the collapse the game is built around.
 
 export function updateObjects(dt, ctx) {
-  const { world, hole, tiles, audio, fx, progress, time } = ctx;
+  const { world, hole, rigid, audio, fx, progress, time } = ctx;
   const { r, x: hx, z: hz } = hole.state;
 
   for (const o of world.objects) {
@@ -24,16 +24,14 @@ export function updateObjects(dt, ctx) {
         const nx = d > 0.01 ? dx / d : 0, nz = d > 0.01 ? dz / d : 0;
         for (let i = 0; i < o.count; i++) {
           const frac = i / Math.max(1, o.count - 1);
-          const lean = 2.2 + frac * 9.0;            // the top swings out hardest
-          const spray = Math.random() * 6.2832;
-          const wobble = 1.4 + frac * 3.2;
-          tiles.spawn(
-            o.x + (Math.random() - 0.5) * 0.3,
-            (i + 0.5) * o.tileH,
-            o.z + (Math.random() - 0.5) * 0.3,
-            nx * lean + Math.cos(spray) * wobble,
-            frac * 1.5,
-            nz * lean + Math.sin(spray) * wobble,
+          // A nudge away from the hole; the solver does the rest, so the
+          // tower topples and the cubes knock each other about on the way in.
+          const lean = 0.6 + frac * 3.4;
+          rigid.spawn(
+            o.x, (i + 0.5) * o.tileH, o.z,
+            nx * lean + (Math.random() - 0.5) * 0.8,
+            0,
+            nz * lean + (Math.random() - 0.5) * 0.8,
             o.colors[i]);
         }
         progress.credit(o, true);

@@ -9,8 +9,8 @@ export const WORLD = { size: 580 };
 const COLORS = ['#e5322c', '#2f6fe8', '#33c24a', '#28b6a6', '#f5c518',
                 '#8a5fd8', '#e8459a', '#f0842a', '#f4ead2', '#4fd0ea'];
 
-export const TILE_W = 2.7;
-export const TILE_H = 0.62;
+export const TILE_W = 2.4;
+export const TILE_H = 2.4;   // cubes
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const irand = (a, b) => Math.floor(rand(a, b + 1));
@@ -33,17 +33,17 @@ export function buildWorld(scene) {
       colors.push(c);
       parts.push({
         x: 0, y: (i + 0.5) * TILE_H, z: 0,
-        sx: TILE_W, sy: TILE_H * 0.9, sz: TILE_W, color: c,
+        sx: TILE_W, sy: TILE_H, sz: TILE_W, color: c,
       });
     }
     const ref = field.alloc(parts);
     if (!ref) return null;
-    const value = count * 0.6;
+    const value = count * 1.4;
     const o = {
       kind: 'stack', x, z, yaw: 0, ref, field, colors,
       count, tileH: TILE_H, radius: TILE_W * 0.71,
       height: count * TILE_H,
-      need: 1.7 + count * 0.21,
+      need: 1.6 + count * 0.42,
       value, state: 'idle', sink: 0, removed: 0, shake: 0,
     };
     field.write(ref, x, 0, z, 0, 1);
@@ -59,7 +59,7 @@ export function buildWorld(scene) {
     const profile = pick(['flat', 'stairs', 'ridge', 'noise']);
     const mode = Math.random() < 0.62 ? 'solid' : (Math.random() < 0.5 ? 'stripe' : 'duo');
     const base = pick(COLORS);
-    const peak = irand(6, 34);
+    const peak = irand(2, 11);
     for (let a = 0; a < cols; a++) {
       for (let c = 0; c < rows; c++) {
         let n;
@@ -89,14 +89,14 @@ export function buildWorld(scene) {
   // Lone spires: the towers that dominate the skyline.
   for (let i = 0; i < 170; i++) {
     const a = rand(0, 6.2832), rr = rand(clear + 10, half - 24);
-    addStack(Math.cos(a) * rr, Math.sin(a) * rr, irand(30, 95),
+    addStack(Math.cos(a) * rr, Math.sin(a) * rr, irand(9, 26),
       Math.random() < 0.5 ? 'stripe' : 'solid', pick(COLORS));
   }
 
   // Short scattered stacks filling the gaps, incl. a few right by the start.
   for (let i = 0; i < 1500; i++) {
     const a = rand(0, 6.2832), rr = rand(8, half - 16);
-    addStack(Math.cos(a) * rr, Math.sin(a) * rr, irand(2, 13),
+    addStack(Math.cos(a) * rr, Math.sin(a) * rr, irand(1, 5),
       Math.random() < 0.75 ? 'solid' : 'duo', pick(COLORS));
   }
 
