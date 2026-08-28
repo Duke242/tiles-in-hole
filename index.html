@@ -50,6 +50,14 @@
   .toast b{display:block;font-size:13px;letter-spacing:1.4px}
   .toast span{display:block;font-size:16px;margin-top:2px}
 
+  #stick{position:fixed;z-index:6;pointer-events:none;border-radius:50%;
+    background:rgba(255,255,255,.13);border:2.5px solid rgba(255,255,255,.4);
+    box-shadow:0 2px 14px rgba(0,0,0,.18);display:none;
+    align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+  #stick.on{display:flex}
+  #stickKnob{width:42%;height:42%;border-radius:50%;
+    background:rgba(255,255,255,.85);border:2px solid rgba(60,70,90,.35);
+    box-shadow:0 3px 10px rgba(0,0,0,.25);transition:transform .04s linear}
   #miniWrap{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);
     padding:6px;border-radius:16px;z-index:5;pointer-events:none}
   #mini{display:block;border-radius:11px}
@@ -115,16 +123,17 @@
 <div id="combo"></div>
 <div id="toasts"></div>
 <div id="miniWrap" class="panel"><canvas id="mini"></canvas></div>
-<div id="hint">Hold anywhere and drag — the hole follows your finger</div>
+<div id="stick"><div id="stickKnob"></div></div>
+<div id="hint">Touch anywhere and push — like a thumbstick</div>
 
 <div id="start" class="overlay">
   <div class="card">
     <h1><span>TILES IN HOLE</span></h1>
-    <p>Steer the hole under the tile stacks and watch them collapse into it.
+    <p>Push the stick to drive the hole under the tile stacks and watch them collapse into it.
        Every tile you swallow makes the hole bigger.</p>
     <button id="playBtn" class="btn" type="button">Play</button>
     <div class="keys">
-      Hold &amp; drag to steer · <kbd>WASD</kbd> also works<br>
+      Touch anywhere and push, like a thumbstick, · <kbd>WASD</kbd> also works<br>
       Scroll to zoom · <kbd>R</kbd> to restart
     </div>
   </div>

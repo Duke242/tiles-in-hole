@@ -32,7 +32,6 @@ const startZ = 0;
 hole.place(startX, startZ);
 
 const input = createInput(canvas, camera, () => audio.unlock());
-input.tx = startX; input.tz = startZ;
 
 // Dev shortcuts for testing the late game without playing through it.
 {
@@ -112,21 +111,6 @@ function showWin(s) {
   audio.victory();
 }
 
-// --- keyboard steering ------------------------------------------------------
-function keySteer(dt) {
-  const k = input.keys;
-  let kx = 0, kz = 0;
-  if (k.a || k.arrowleft) kx -= 1;
-  if (k.d || k.arrowright) kx += 1;
-  if (k.w || k.arrowup) kz -= 1;
-  if (k.s || k.arrowdown) kz += 1;
-  if (!kx && !kz) return;
-  const l = Math.hypot(kx, kz);
-  const v = (HOLE.baseSpeed + hole.state.r * HOLE.speedPerR) * 1.15;
-  const lim = WORLD.size / 2;
-  input.tx = THREE.MathUtils.clamp(input.tx + (kx / l) * v * dt, -lim, lim);
-  input.tz = THREE.MathUtils.clamp(input.tz + (kz / l) * v * dt, -lim, lim);
-}
 addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'r') location.reload(); });
 
 // --- loop -------------------------------------------------------------------
@@ -143,8 +127,7 @@ function frame(now) {
   if (hintEl && (progress.state.count > 2 || ctx.time > 8)) {
     hintEl.style.opacity = '0';
   }
-  keySteer(dt);
-  hole.update(dt, { x: input.tx, z: input.tz });
+  hole.update(dt, input.readMove());
   ground.setHole(hole.state.x, hole.state.z, hole.state.r);
 
   updateObjects(dt, ctx);

@@ -74,19 +74,15 @@ export function createHole(scene) {
 
   function place(x, z) { state.x = x; state.z = z; }
 
-  function update(dt, target) {
-    const dx = target.x - state.x, dz = target.z - state.z;
-    const d = Math.hypot(dx, dz);
+  // move: stick vector in world axes, length 0..1.
+  function update(dt, move) {
     const maxV = HOLE.baseSpeed + state.r * HOLE.speedPerR;
-    // Desired velocity points at the target, easing down over the last metre
-    // so the hole settles instead of jittering around the finger.
-    let dvx = 0, dvz = 0;
-    if (d > 1e-4) {
-      const want = Math.min(maxV, d * 14);
-      dvx = (dx / d) * want;
-      dvz = (dz / d) * want;
-    }
-    const k = Math.min(1, dt * HOLE.accel);
+    const dvx = move.x * maxV;
+    const dvz = move.z * maxV;
+    // Stopping bites harder than accelerating, so releasing the stick feels
+    // decisive rather than sliding on ice.
+    const pushing = (move.x !== 0 || move.z !== 0);
+    const k = Math.min(1, dt * (pushing ? HOLE.accel : HOLE.accel * 1.7));
     state.vx += (dvx - state.vx) * k;
     state.vz += (dvz - state.vz) * k;
     state.x = THREE.MathUtils.clamp(state.x + state.vx * dt, BOUND.lo, BOUND.hi);
