@@ -3,6 +3,7 @@
 // thumbstick. The hole is never teleported to the finger.
 
 const DEADZONE = 0.13;
+const SHOW_STICK = false;   // control stays, visual is hidden
 
 export function createInput(canvas, camera, onFirstTouch) {
   const state = {
@@ -19,7 +20,7 @@ export function createInput(canvas, camera, onFirstTouch) {
   const radius = () => Math.max(52, Math.min(innerWidth, innerHeight) * 0.16);
 
   function place(x, y) {
-    if (!stick) return;
+    if (!stick || !SHOW_STICK) return;
     const r = radius();
     stick.style.width = stick.style.height = r * 2 + 'px';
     stick.style.left = (x - r) + 'px';
@@ -28,7 +29,7 @@ export function createInput(canvas, camera, onFirstTouch) {
   }
 
   function setKnob(dx, dy) {
-    if (!knob) return;
+    if (!knob || !SHOW_STICK) return;
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
   }
 

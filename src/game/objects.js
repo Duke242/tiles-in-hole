@@ -23,14 +23,17 @@ export function updateObjects(dt, ctx) {
         o.field.hide(o.ref);
         const nx = d > 0.01 ? dx / d : 0, nz = d > 0.01 ? dz / d : 0;
         for (let i = 0; i < o.count; i++) {
-          const lean = (i / o.count) * 3.2;          // higher tiles swing out further
+          const frac = i / Math.max(1, o.count - 1);
+          const lean = 2.2 + frac * 9.0;            // the top swings out hardest
+          const spray = Math.random() * 6.2832;
+          const wobble = 1.4 + frac * 3.2;
           tiles.spawn(
-            o.x + (Math.random() - 0.5) * 0.25,
+            o.x + (Math.random() - 0.5) * 0.3,
             (i + 0.5) * o.tileH,
-            o.z + (Math.random() - 0.5) * 0.25,
-            nx * lean + (Math.random() - 0.5) * 1.6,
-            0,
-            nz * lean + (Math.random() - 0.5) * 1.6,
+            o.z + (Math.random() - 0.5) * 0.3,
+            nx * lean + Math.cos(spray) * wobble,
+            frac * 1.5,
+            nz * lean + Math.sin(spray) * wobble,
             o.colors[i]);
         }
         progress.credit(o, true);

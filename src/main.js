@@ -52,6 +52,31 @@ const progress = createProgress(world,
 
 const ctx = { world, hole, debris, tiles, audio, fx, progress, time: 0 };
 
+// Inspection handle for automated checks.
+window.__debug = {
+  maxPile: () => { let m = 0; for (const h of tiles.height) if (h > m) m = h; return m; },
+  tileH: () => tiles.tileH,
+  active: () => tiles.nAct,
+  settled: () => tiles.nRest,
+  sample: () => {
+    let over = 0, below = 0, fast = 0, slipMax = 0, ySum = 0, vSum = 0;
+    const hx = hole.state.x, hz = hole.state.z, r = hole.state.r;
+    for (let i = 0; i < tiles.nAct; i++) {
+      const t = tiles.act[i];
+      const dx = t.x - hx, dz = t.z - hz;
+      if (dx * dx + dz * dz < r * r * 0.94) over++;
+      if (t.y < -1) below++;
+      const v = Math.hypot(t.vx, t.vy, t.vz);
+      if (v > 1) fast++;
+      slipMax = Math.max(slipMax, t.slips || 0);
+      ySum += t.y; vSum += v;
+    }
+    const n = Math.max(1, tiles.nAct);
+    return { n: tiles.nAct, over, below, fast, slipMax,
+             avgY: +(ySum / n).toFixed(2), avgV: +(vSum / n).toFixed(2) };
+  },
+};
+
 // --- camera -----------------------------------------------------------------
 const camPos = new THREE.Vector3();
 const camLook = new THREE.Vector3();

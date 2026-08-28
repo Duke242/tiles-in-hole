@@ -7,6 +7,11 @@ const GRAVITY = 58;
 const BOUNCE = 0.24;
 const FRICTION = 0.72;
 const SLEEP_V = 1.7;
+// Heaps spread out instead of growing back into towers. Without this, a
+// collapsed stack lands in its own footprint and rebuilds itself.
+const MAX_PILE_TILES = 2.6;
+const MAX_SLIPS = 7;
+const STEP = 1 / 60;   // fixed physics tick
 
 // Loose tiles are real bodies: they fall, tumble, bounce, and pile up on each
 // other. Piling uses a height grid rather than tile-to-tile collision, which
@@ -70,6 +75,7 @@ export class Tiles {
     t.ax = (Math.random() - 0.5) * 7;
     t.ay = (Math.random() - 0.5) * 7;
     t.az = (Math.random() - 0.5) * 7;
+    t.slips = 0;
     if (color && color.isColor) t.col.copy(color); else t.col.set(color || '#ffffff');
     this.activeMesh.setColorAt(this.nAct, t.col);
     this.nAct++;
@@ -131,10 +137,8 @@ export class Tiles {
     }
   }
 
-  update(dt, hole, onConsumed) {
+  _step(dt, hole, onConsumed) {
     const { x: hx, z: hz, r } = hole;
-    this._wakeUnderHole(hole);
-
     const deep = -(r * 0.8 + 8);
     for (let i = 0; i < this.nAct; i++) {
       const t = this.act[i];
@@ -146,18 +150,28 @@ export class Tiles {
       const overHole = (dx * dx + dz * dz) < r * r * 0.94;
 
       if (overHole) {
-        // Nothing to land on. Fall through and be swallowed.
         if (t.y < deep) { onConsumed && onConsumed(); this._kill(i); i--; continue; }
       } else {
-        const rest = this.groundAt(t.x, t.z) + this.tileH * 0.5;
+        const pile = this.groundAt(t.x, t.z);
+        const rest = pile + this.tileH * 0.5;
         if (t.y <= rest) {
           t.y = rest;
           if (t.vy < -SLEEP_V) {
             t.vy = -t.vy * BOUNCE;
             t.vx *= FRICTION; t.vz *= FRICTION;
             t.ax *= 0.5; t.ay *= 0.5; t.az *= 0.5;
+          } else if (pile > this.tileH * MAX_PILE_TILES && t.slips < MAX_SLIPS) {
+            t.slips++;
+            const a = Math.random() * 6.2832;
+            const push = 3.4 + Math.random() * 3.4;
+            t.vx += Math.cos(a) * push;
+            t.vz += Math.sin(a) * push;
+            t.vy = 2.2;
+            t.y = rest + 0.06;
+            t.ay += (Math.random() - 0.5) * 5;
           } else {
-            t.vy = 0; t.vx *= 0.55; t.vz *= 0.55;
+            t.vy = 0; t.vx *= 0.5; t.vz *= 0.5;
+            t.ax *= 0.5; t.ay *= 0.5; t.az *= 0.5;
             if (Math.hypot(t.vx, t.vz) < 0.9) {
               this._settle(t);
               this._kill(i); i--; continue;
@@ -166,7 +180,24 @@ export class Tiles {
         }
       }
       if (t.y < -140) { this._kill(i); i--; continue; }
+    }
+  }
 
+  // Physics runs on a fixed timestep. Integrating with the raw frame time made
+  // behaviour frame-rate dependent: one step of gravity could exceed the sleep
+  // threshold, so tiles bounced forever instead of coming to rest.
+  update(dt, hole, onConsumed) {
+    this._wakeUnderHole(hole);
+    let remaining = Math.min(dt, 0.2);
+    let guard = 0;
+    while (remaining > 1e-4 && guard++ < 8) {
+      const h = Math.min(STEP, remaining);
+      this._step(h, hole, onConsumed);
+      remaining -= h;
+    }
+
+    for (let i = 0; i < this.nAct; i++) {
+      const t = this.act[i];
       _o.position.set(t.x, t.y, t.z);
       _o.rotation.set(t.rx, t.ry, t.rz);
       _o.scale.set(this.tileW, this.tileH * 0.9, this.tileW);
