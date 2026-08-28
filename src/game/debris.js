@@ -112,7 +112,15 @@ export class Debris {
       this.mesh.setMatrixAt(i, _o.matrix);
     }
     this.mesh.count = this.n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    const attr = this.mesh.instanceMatrix;
+    attr.clearUpdateRanges();
+    if (this.n > 0) attr.addUpdateRange(0, this.n * 16);
+    attr.needsUpdate = true;
+    if (this.mesh.instanceColor) {
+      const ca = this.mesh.instanceColor;
+      ca.clearUpdateRanges();
+      if (this.n > 0) ca.addUpdateRange(0, this.n * 3);
+      ca.needsUpdate = true;
+    }
   }
 }

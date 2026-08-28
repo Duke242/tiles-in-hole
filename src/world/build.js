@@ -18,7 +18,7 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
 export function buildWorld(scene) {
   const objects = [];
-  const field = new Field(scene, 120000, { cast: true, receive: true });
+  const field = new Field(scene, 90000, { cast: true, receive: false });
   let totalValue = 0;
 
   function addStack(x, z, count, mode, baseColor) {

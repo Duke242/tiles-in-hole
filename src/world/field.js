@@ -67,6 +67,10 @@ export class Field {
     this.capacity = capacity;
     this.used = 0;
     this.dirty = true;
+    // Uploading the whole instance buffer every frame costs megabytes of
+    // bandwidth. Track which instances actually moved and upload only those.
+    this.ranges = [];
+    this.fullUpload = true;
   }
 
   // parts: [{x,y,z,sx,sy,sz,color,leg?}] in model space
@@ -110,24 +114,40 @@ export class Field {
       }
       this.mesh.setMatrixAt(ref.base + i, _m);
     }
+    this.touch(ref.base, ref.locals.length);
+  }
+
+  touch(start, count) {
     this.dirty = true;
+    if (this.fullUpload) return;
+    if (this.ranges.length > 96) { this.fullUpload = true; this.ranges.length = 0; return; }
+    this.ranges.push(start, count);
   }
 
   hidePart(ref, i) {
     if (!ref.hidden) ref.hidden = new Set();
     ref.hidden.add(i);
     this.mesh.setMatrixAt(ref.base + i, ZERO);
-    this.dirty = true;
+    this.touch(ref.base + i, 1);
   }
 
   hide(ref) {
     for (let i = 0; i < ref.locals.length; i++) this.mesh.setMatrixAt(ref.base + i, ZERO);
-    this.dirty = true;
+    this.touch(ref.base, ref.locals.length);
   }
 
   flush() {
     if (!this.dirty) return;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    const attr = this.mesh.instanceMatrix;
+    attr.clearUpdateRanges();
+    if (!this.fullUpload) {
+      for (let i = 0; i < this.ranges.length; i += 2) {
+        attr.addUpdateRange(this.ranges[i] * 16, this.ranges[i + 1] * 16);
+      }
+    }
+    attr.needsUpdate = true;
+    this.ranges.length = 0;
+    this.fullUpload = false;      // after the initial build, go incremental
     this.dirty = false;
   }
 }

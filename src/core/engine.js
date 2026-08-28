@@ -9,7 +9,7 @@ export function createEngine(canvas) {
     canvas, antialias: true, powerPreference: 'high-performance',
   });
   const mobile = Math.min(innerWidth, innerHeight) < 700;
-  renderer.setPixelRatio(Math.min(mobile ? 1.75 : 2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(mobile ? 1.5 : 2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
