@@ -269,7 +269,9 @@ export class Rigid {
         if (!b.asleep) continue;
         const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
         if (b.body) {
-          if (d2 < wakeR2) { b.body.wakeUp(); b.asleep = false; }
+          // Rapier wakes a sleeping tile itself when something moving touches
+          // it; track it from then on so its picture follows its body.
+          if (d2 < wakeR2 || !b.body.isSleeping()) { b.body.wakeUp(); b.asleep = false; }
           else if (d2 > dropR2 && l.icon) this._dematerialize(b);
         } else if (d2 < liveR2) {
           this._materialize(b);
@@ -295,8 +297,11 @@ export class Rigid {
           this._remove(L, i);
           continue;
         }
+        // Off the ground while over the hole, and for good once it is under
+        // the board: the ground is a 2-deep slab, and a tile still inside it
+        // when the hole moves on would be shoved back up onto the board.
         const dx = t.x - hx, dz = t.z - hz;
-        const over = (dx * dx + dz * dz) < holeR2;
+        const over = (dx * dx + dz * dz) < holeR2 || t.y < 0.05;
         if (over !== b.offGround) {
           b.offGround = over;
           b.collider.setCollisionGroups(over ? G_OFF : G_ON);
