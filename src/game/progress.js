@@ -1,51 +1,42 @@
-import { TIERS } from './tune.js';
-
-// Score, combo, tier unlocks and the win condition.
-export function createProgress(world, onUnlock, onWin) {
+// Goal card, clock, and the win/lose calls.
+export function createProgress(level, { onWin, onLose }) {
   const state = {
-    value: 0, total: world.totalValue,
-    count: 0, totalCount: world.totalCount,
-    combo: 0, comboTimer: 0, best: 0,
-    score: 0, tier: 0, won: false, time: 0,
+    goals: level.goals.map((g) => ({ ...g, have: 0 })),
+    time: level.time, left: level.time,
+    status: 'playing', eaten: 0, freeze: 0, started: false,
   };
 
-  function bump() {
-    state.combo++;
-    state.comboTimer = 1.3;
-    if (state.combo > state.best) state.best = state.combo;
-  }
-
-  function creditRaw(v) {
-    state.value += v;
-    state.score += Math.round(v * (1 + Math.min(state.combo, 40) * 0.06));
-  }
-
-  function credit(o, silent = false) {
-    creditRaw(o.value ?? 0);
-    state.count++;
-    if (!silent) bump();
-    if (state.count >= state.totalCount && !state.won) {
-      state.won = true;
+  function credit(key, n) {
+    state.eaten += n;
+    if (state.status !== 'playing') return;
+    const g = state.goals.find((x) => x.key === key);
+    if (!g || g.have >= g.need) return;
+    g.have = Math.min(g.need, g.have + n);
+    if (state.goals.every((x) => x.have >= x.need)) {
+      state.status = 'won';
       onWin(state);
     }
   }
 
-  function update(dt, holeR) {
-    state.time += dt;
-    state.comboTimer -= dt;
-    if (state.comboTimer <= 0) state.combo = 0;
-    let t = 0;
-    for (let i = 0; i < TIERS.length; i++) if (holeR >= TIERS[i].r) t = i;
-    if (t > state.tier) {
-      state.tier = t;
-      onUnlock(TIERS[t], t);
+  function update(dt) {
+    if (state.status !== 'playing' || !state.started) return;
+    if (state.freeze > 0) { state.freeze -= dt; return; }
+    state.left -= dt;
+    if (state.left <= 0) {
+      state.left = 0;
+      state.status = 'lost';
+      onLose(state);
     }
   }
 
-  function nextTier(holeR) {
-    for (const t of TIERS) if (t.r > holeR) return t;
-    return null;
+  function fail(reason) {
+    if (state.status !== 'playing') return;
+    state.status = 'lost';
+    state.reason = reason;
+    onLose(state);
   }
+  function addTime(s) { state.left += s; }
+  function revive(s) { state.left = s; state.status = 'playing'; }
 
-  return { state, credit, creditRaw, bump, update, nextTier };
+  return { state, credit, update, addTime, revive, fail };
 }

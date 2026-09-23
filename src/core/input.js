@@ -1,37 +1,19 @@
-// Analog stick, console style. Touching anywhere plants the stick; the offset
-// from that point is a direction plus a magnitude, exactly like pushing a
-// thumbstick. The hole is never teleported to the finger.
+// Thumbstick, app style: a fixed translucent ring at the bottom of the screen
+// whose knob follows your finger, but you can touch anywhere; the offset from
+// where you touched is the direction plus a magnitude.
 
-const DEADZONE = 0.13;
-const SHOW_STICK = false;   // control stays, visual is hidden
+const DEADZONE = 0.12;
 
 export function createInput(canvas, camera, onFirstTouch) {
-  const state = {
-    // movement vector in world axes, length 0..1
-    mx: 0, mz: 0, active: false,
-    keys: {}, zoom: 1, moved: false,
-  };
-
+  const state = { mx: 0, mz: 0, active: false, keys: {}, zoom: 1, moved: false };
   const stick = document.getElementById('stick');
   const knob = document.getElementById('stickKnob');
   let originX = 0, originY = 0, pointerId = null;
   let started = false;
 
-  const radius = () => Math.max(52, Math.min(innerWidth, innerHeight) * 0.16);
+  const radius = () => Math.max(40, Math.min(innerWidth, innerHeight) * 0.15);
 
-  function place(x, y) {
-    if (!stick || !SHOW_STICK) return;
-    const r = radius();
-    stick.style.width = stick.style.height = r * 2 + 'px';
-    stick.style.left = (x - r) + 'px';
-    stick.style.top = (y - r) + 'px';
-    stick.classList.add('on');
-  }
-
-  function setKnob(dx, dy) {
-    if (!knob || !SHOW_STICK) return;
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
-  }
+  function setKnob(dx, dy) { if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`; }
 
   function apply(cx, cy) {
     const r = radius();
@@ -39,17 +21,12 @@ export function createInput(canvas, camera, onFirstTouch) {
     const len = Math.hypot(dx, dy);
     const clamped = Math.min(len, r);
     if (len > 0.0001) { dx = (dx / len) * clamped; dy = (dy / len) * clamped; }
-    setKnob(dx, dy);
-
+    setKnob(dx * 0.85, dy * 0.85);
     let mag = clamped / r;
     if (mag < DEADZONE) { state.mx = 0; state.mz = 0; return; }
-    // Rescale past the deadzone so the first millimetre of travel does nothing
-    // abrupt, then ease in slightly for fine control near the centre.
     mag = (mag - DEADZONE) / (1 - DEADZONE);
-    mag = mag * mag * 0.45 + mag * 0.55;
+    mag = mag * mag * 0.4 + mag * 0.6;
     const inv = 1 / (Math.hypot(dx, dy) || 1);
-    // Screen up is away from the camera; the camera never rotates, so the
-    // mapping is fixed.
     state.mx = dx * inv * mag;
     state.mz = dy * inv * mag;
     state.moved = true;
@@ -60,7 +37,7 @@ export function createInput(canvas, camera, onFirstTouch) {
     pointerId = null;
     state.mx = 0; state.mz = 0;
     setKnob(0, 0);
-    if (stick) stick.classList.remove('on');
+    if (stick) stick.classList.remove('held');
   }
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -69,8 +46,8 @@ export function createInput(canvas, camera, onFirstTouch) {
     pointerId = e.pointerId;
     state.active = true;
     originX = e.clientX; originY = e.clientY;
-    place(originX, originY);
     setKnob(0, 0);
+    if (stick) stick.classList.add('held');
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -89,9 +66,11 @@ export function createInput(canvas, camera, onFirstTouch) {
   });
   addEventListener('keyup', (e) => { state.keys[e.key.toLowerCase()] = false; });
   addEventListener('wheel', (e) => {
-    state.zoom = Math.max(0.55, Math.min(2.0, state.zoom + e.deltaY * 0.0012));
+    state.zoom = Math.max(0.6, Math.min(1.8, state.zoom + e.deltaY * 0.0012));
   }, { passive: true });
   addEventListener('contextmenu', (e) => e.preventDefault());
+
+  state.show = (on) => { if (stick) stick.classList.toggle('on', on); };
 
   // Keyboard behaves as a digital stick held to full deflection.
   state.readMove = () => {
@@ -103,8 +82,10 @@ export function createInput(canvas, camera, onFirstTouch) {
     if (k.s || k.arrowdown) kz += 1;
     if (kx || kz) {
       const l = Math.hypot(kx, kz);
+      setKnob((kx / l) * radius() * 0.85, (kz / l) * radius() * 0.85);
       return { x: kx / l, z: kz / l };
     }
+    if (!state.active) setKnob(0, 0);
     return { x: state.mx, z: state.mz };
   };
 

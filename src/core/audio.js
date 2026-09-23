@@ -51,6 +51,10 @@ export class Audio {
 
   // A tile/prop drops in — pitch rises with the combo for that arcade ladder.
   pop(combo = 0) {
+    // A stack going in fires many of these at once; keep it to a patter.
+    const now = performance.now();
+    if (now - (this._lastPop || 0) < 70) return;
+    this._lastPop = now;
     const f = 300 + Math.min(combo, 45) * 14;
     this.tone({ f0: f * 1.6, f1: f * 0.72, dur: 0.09, type: 'triangle', vol: 0.075 });
   }
@@ -67,6 +71,12 @@ export class Audio {
     [523, 659, 784, 1046].forEach((f, i) =>
       this.tone({ f0: f, f1: f, dur: 0.16, type: 'triangle', vol: 0.09, delay: i * 0.07 }));
   }
+  tick() { this.tone({ f0: 1200, f1: 900, dur: 0.06, type: 'square', vol: 0.05 }); }
+  timeUp() {
+    this.tone({ f0: 420, f1: 200, dur: 0.5, type: 'sawtooth', vol: 0.1 });
+    this.tone({ f0: 300, f1: 140, dur: 0.7, type: 'square', vol: 0.08, delay: 0.25 });
+  }
+  boost() { [660, 880, 1320].forEach((f, i) => this.tone({ f0: f, f1: f, dur: 0.12, type: 'triangle', vol: 0.08, delay: i * 0.06 })); }
   victory() {
     [523, 659, 784, 1046, 1318].forEach((f, i) =>
       this.tone({ f0: f, f1: f, dur: 0.45, type: 'sine', vol: 0.11, delay: i * 0.13 }));

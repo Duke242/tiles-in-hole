@@ -1,39 +1,32 @@
 import * as THREE from 'three';
-import { CITY } from '../game/tune.js';
-
-const SKY_TOP = 0x3f9fe0;
-const SKY_HORIZON = 0xbfe9fa;
 
 export function createEngine(canvas) {
-  const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: true, powerPreference: 'high-performance',
-  });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   const mobile = Math.min(innerWidth, innerHeight) < 700;
-  renderer.setPixelRatio(Math.min(mobile ? 1.5 : 2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(mobile ? 2 : 2, window.devicePixelRatio || 1));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_HORIZON, 420, 950);
-
-  const camera = new THREE.PerspectiveCamera(44, 1, 0.5, 2600);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.5, 1600);
 
   // --- sky dome -----------------------------------------------------------
+  const skyUniforms = {
+    top: { value: new THREE.Color('#3d9be6') },
+    horizon: { value: new THREE.Color('#c6ebfb') },
+  };
   const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(1500, 24, 16),
+    new THREE.SphereGeometry(1200, 24, 16),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: {
-        top: { value: new THREE.Color(SKY_TOP) },
-        horizon: { value: new THREE.Color(SKY_HORIZON) },
-      },
+      uniforms: skyUniforms,
       vertexShader: `varying float vH;
         void main(){ vH = normalize(position).y;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
       fragmentShader: `varying float vH; uniform vec3 top; uniform vec3 horizon;
         void main(){
-          float t = smoothstep(-0.05, 0.55, vH);
+          float t = smoothstep(-0.02, 0.5, vH);
           gl_FragColor = vec4(mix(horizon, top, t), 1.0);
         }`,
     }));
@@ -41,54 +34,53 @@ export function createEngine(canvas) {
   scene.add(sky);
 
   // --- lights -------------------------------------------------------------
-  scene.add(new THREE.HemisphereLight(0xdcefff, 0x86bb6a, 0.46));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+  scene.add(new THREE.HemisphereLight(0xe4f3ff, 0x7fb86a, 0.55));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.16));
 
-  const sun = new THREE.DirectionalLight(0xfff8ea, 1.5);
-  const mid = CITY.SPAN / 2;
-  sun.position.set(mid + 300, 400, mid + 250);
-  sun.target.position.set(mid, 0, mid);
+  const sun = new THREE.DirectionalLight(0xfff6e6, 1.55);
+  sun.position.set(140, 260, 110);
+  sun.target.position.set(0, 0, 0);
   scene.add(sun.target);
   sun.castShadow = true;
-  const half = CITY.SPAN * 0.72;
-  sun.shadow.camera.left = -half;
-  sun.shadow.camera.right = half;
-  sun.shadow.camera.top = half;
-  sun.shadow.camera.bottom = -half;
   sun.shadow.camera.near = 40;
-  sun.shadow.camera.far = 1100;
+  sun.shadow.camera.far = 900;
   const sm = mobile ? 1536 : 2048;
   sun.shadow.mapSize.set(sm, sm);
-  sun.shadow.bias = -0.0006;
-  sun.shadow.normalBias = 0.9;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.6;
   scene.add(sun);
 
+  function setBoard(w, d) {
+    const half = Math.max(w, d) * 0.72 + 20;
+    sun.shadow.camera.left = -half;
+    sun.shadow.camera.right = half;
+    sun.shadow.camera.top = half;
+    sun.shadow.camera.bottom = -half;
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+  setBoard(60, 80);
+
+  function setSky([top, horizon]) {
+    skyUniforms.top.value.set(top);
+    skyUniforms.horizon.value.set(horizon);
+  }
+
   // --- voxel clouds -------------------------------------------------------
-  const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
-  const cloudMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.94, fog: true,
-  });
-  const PUFFS = 7, CLUSTERS = 34;
-  const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, CLUSTERS * PUFFS);
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
+  const PUFFS = 6, CLUSTERS = 22;
+  const clouds = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), cloudMat, CLUSTERS * PUFFS);
   clouds.frustumCulled = false;
   const cloudData = [];
   const d = new THREE.Object3D();
   let ci = 0;
   for (let c = 0; c < CLUSTERS; c++) {
-    const cx = Math.random() * 2200 - 1100 + CITY.SPAN / 2;
-    const cz = Math.random() * 2200 - 1100 + CITY.SPAN / 2;
-    const cy = 150 + Math.random() * 120;
-    const s = 0.7 + Math.random() * 1.5;
-    const drift = 1.4 + Math.random() * 2.2;
+    const cx = Math.random() * 1400 - 700, cz = Math.random() * 1400 - 700;
+    const cy = 120 + Math.random() * 80, s = 0.6 + Math.random() * 1.2, drift = 1 + Math.random() * 2;
     for (let p = 0; p < PUFFS; p++) {
       cloudData.push({
         i: ci++, cx, cz, cy, drift,
-        ox: (Math.random() - 0.5) * 46 * s,
-        oy: (Math.random() - 0.5) * 9 * s,
-        oz: (Math.random() - 0.5) * 34 * s,
-        w: (14 + Math.random() * 20) * s,
-        h: (7 + Math.random() * 9) * s,
-        dp: (12 + Math.random() * 16) * s,
+        ox: (Math.random() - 0.5) * 36 * s, oy: (Math.random() - 0.5) * 7 * s, oz: (Math.random() - 0.5) * 26 * s,
+        w: (10 + Math.random() * 16) * s, h: (5 + Math.random() * 7) * s, dp: (9 + Math.random() * 12) * s,
       });
     }
   }
@@ -97,10 +89,8 @@ export function createEngine(canvas) {
   function updateClouds(t) {
     for (const c of cloudData) {
       let x = c.cx + c.ox + t * c.drift;
-      const span = 2600;
-      x = ((x + 1300 - CITY.SPAN / 2) % span + span) % span - 1300 + CITY.SPAN / 2;
+      x = ((x + 700) % 1400 + 1400) % 1400 - 700;
       d.position.set(x, c.cy + c.oy, c.cz + c.oz);
-      d.rotation.set(0, 0, 0);
       d.scale.set(c.w, c.h, c.dp);
       d.updateMatrix();
       clouds.setMatrixAt(c.i, d.matrix);
@@ -111,10 +101,11 @@ export function createEngine(canvas) {
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / innerHeight;
+    camera.fov = camera.aspect < 1 ? 58 : 44;
     camera.updateProjectionMatrix();
   }
   addEventListener('resize', resize);
   resize();
 
-  return { renderer, scene, camera, sun, sky, updateClouds, resize, mobile };
+  return { renderer, scene, camera, sun, sky, setSky, setBoard, updateClouds, resize, mobile };
 }

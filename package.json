@@ -1,9 +1,9 @@
 {
-  "name": "voxel-city-hole",
+  "name": "tiles-in-hole",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "A black hole devours a voxel city. Three.js sandbox.",
+  "description": "Level-based black-hole puzzle: fill the goal card by swallowing voxel tiles before the clock runs out. Three.js + Rapier.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
