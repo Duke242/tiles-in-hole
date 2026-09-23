@@ -10,10 +10,12 @@ import { L_DISC, L_DICE } from '../game/rigid.js';
 // collect, and a clock. Later levels sprinkle in voxel props as a bonus.
 
 export const HOLE_START = 1.0;
-const DISC_PITCH = 1.12, DICE_PITCH = 1.0;
+export const DISC_PITCH = 1.12, DICE_PITCH = 1.0;
 const TAU = Math.PI * 2;
 
-function patternPoints(rng, kind, pitch) {
+// Footprints of one group of stacks, centred on the origin (shared with the
+// free-play map).
+export function patternPoints(rng, kind, pitch) {
   const pts = [];
   const push = (x, z) => pts.push([x, z]);
   if (kind === 'block') {

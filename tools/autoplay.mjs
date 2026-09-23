@@ -4,6 +4,7 @@
 // timings. Needs a Chromium binary (CHROME env, defaults to Playwright's).
 //   npm run dev &
 //   node tools/autoplay.mjs http://localhost:5173/?level=8 out/l8 120 20
+//   node tools/autoplay.mjs "http://localhost:5173/?mode=free" out/free 120 20   # free play
 //   W=1280 H=800 node tools/autoplay.mjs http://localhost:5173/ out/desk 30 10
 //   EXPR='__debug.hole()' node tools/autoplay.mjs http://localhost:5173/ out/x 0   # evaluate in-page
 import { spawn } from 'node:child_process';
@@ -75,7 +76,7 @@ for (let i = 0; i < 80; i++) {
   await sleep(250);
 }
 await shot('menu');
-await evalJs('document.getElementById("playBtn").click(); true');
+await evalJs(`document.getElementById(${JSON.stringify(url.includes('mode=free') ? 'freeBtn' : 'playBtn')}).click(); true`);
 await sleep(800);
 await shot('play0');
 await evalJs('__debug.perf()');
@@ -101,7 +102,7 @@ if (seconds > 0) {
       else __debug.setMove(0, 0);
       return JSON.stringify({ status: __debug.status(), r: +h.r.toFixed(2), size: h.size, x: +h.x.toFixed(1), z: +h.z.toFixed(1),
         target: best && best.key, td: +bd.toFixed(1), left: p && +p.left.toFixed(1), eaten: h.eaten,
-        goals: p && p.goals.map(g => g.have + '/' + g.need).join(' '), bodies: __debug.active() });
+        goals: p && p.goals.map(g => g.have + '/' + g.need).join(' '), bodies: __debug.active(), run: __debug.run() });
     })()`);
     if (Date.now() - lastLog > 2000) { console.log(((Date.now() - t0) / 1000).toFixed(0) + 's', st); lastLog = Date.now(); }
     if (Date.now() - t0 >= nextShot) { await shot('t' + k++); nextShot += every * 1000; }

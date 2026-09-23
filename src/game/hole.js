@@ -61,7 +61,7 @@ export function createHole(scene) {
   arrow.position.y = 0.08;
   group.add(arrow);
 
-  const state = { x: 0, z: 0, r: 1, tr: 1, r0: 1, vx: 0, vz: 0, speed: 0, eaten: 0, size: 1, boost: 0 };
+  const state = { x: 0, z: 0, r: 1, tr: 1, r0: 1, max: HOLE.max, vx: 0, vz: 0, speed: 0, eaten: 0, size: 1, boost: 0 };
   const bounds = { w: 60, d: 80 };
 
   function place(x, z) { state.x = x; state.z = z; }
@@ -73,9 +73,10 @@ export function createHole(scene) {
   function _target() {
     const base = state.r0 * (1 + 0.16 * Math.sqrt(state.eaten));
     state.size = 1 + Math.floor(0.45 * Math.sqrt(state.eaten));
-    state.tr = Math.min(HOLE.max, base * (state.boost > 0 ? 1.6 : 1));
+    state.tr = Math.min(state.max, base * (state.boost > 0 ? 1.6 : 1));
   }
   function setBounds(w, d) { bounds.w = w; bounds.d = d; }
+  function setMax(m) { state.max = m; _target(); }
   function setSkin([outerHex, innerHex]) { outer.material.color.set(outerHex); inner.material.color.set(innerHex); }
 
   // move: stick vector in world axes, length 0..1.
@@ -114,5 +115,5 @@ export function createHole(scene) {
   function grow(n) { state.eaten += n; _target(); }
   function boost(seconds) { state.boost = seconds; _target(); }
 
-  return { state, update, grow, boost, place, reset, setBounds, setSkin };
+  return { state, update, grow, boost, place, reset, setBounds, setMax, setSkin };
 }

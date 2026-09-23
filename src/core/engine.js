@@ -50,14 +50,26 @@ export function createEngine(canvas) {
   sun.shadow.normalBias = 0.6;
   scene.add(sun);
 
+  // The shadow frustum covers a level board whole. A board bigger than the
+  // cap (free play) gets a frustum that rides along with the hole instead.
+  const SHADOW_HALF_MAX = 110;
+  let follow = false;
+  function setSunAt(x, z) {
+    sun.position.set(x + 140, 260, z + 110);
+    sun.target.position.set(x, 0, z);
+  }
   function setBoard(w, d) {
-    const half = Math.max(w, d) * 0.72 + 20;
+    const need = Math.max(w, d) * 0.72 + 20;
+    const half = Math.min(SHADOW_HALF_MAX, need);
+    follow = need > half;
     sun.shadow.camera.left = -half;
     sun.shadow.camera.right = half;
     sun.shadow.camera.top = half;
     sun.shadow.camera.bottom = -half;
     sun.shadow.camera.updateProjectionMatrix();
+    if (!follow) setSunAt(0, 0);
   }
+  function followSun(x, z) { if (follow) setSunAt(x, z); }
   setBoard(60, 80);
 
   function setSky([top, horizon]) {
@@ -107,5 +119,5 @@ export function createEngine(canvas) {
   addEventListener('resize', resize);
   resize();
 
-  return { renderer, scene, camera, sun, sky, setSky, setBoard, updateClouds, resize, mobile };
+  return { renderer, scene, camera, sun, sky, setSky, setBoard, followSun, updateClouds, resize, mobile };
 }

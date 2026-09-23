@@ -1,16 +1,19 @@
 import { iconUrl } from '../world/tiles.js';
 
 // In-game overlay: level label, clock, goal cards, the Size pill under the
-// hole, boosters, "+1" popups and the little icons that fly to the card.
+// hole, boosters, "+1" popups and the little icons that fly to the card. In
+// free play the clock pill becomes the tile counter, the card column is
+// hidden, and the booster badges show a recharge instead of a stock.
 const el = (id) => document.getElementById(id);
 
 export function createHUD() {
   const hud = el('hud');
   const lvl = el('lvl'), timer = el('timer'), timeText = el('timeText');
   const goalsEl = el('goals'), sizeLbl = el('sizeLbl'), hint = el('hint');
+  const sub = el('sub'), ico = timer.querySelector('.ico');
   const fxLayer = el('fx');
   const cards = new Map();
-  let lastSec = -1, flying = 0, popping = 0;
+  let lastSec = -1, flying = 0, popping = 0, lastScore = -1, lastLeft = -1;
 
   function fmt(t) {
     t = Math.max(0, Math.ceil(t));
@@ -19,6 +22,21 @@ export function createHUD() {
 
   function show(on) { hud.classList.toggle('hidden', !on); sizeLbl.classList.toggle('hidden', !on); }
   function setLevel(n) { lvl.textContent = `LEVEL ${n}`; }
+
+  function setFree(on) {
+    hud.classList.toggle('free', on);
+    sub.classList.toggle('hidden', !on);
+    ico.textContent = on ? '🍪' : '⏱';
+    timer.classList.remove('warn');
+    if (on) lvl.textContent = 'FREE PLAY';
+    lastSec = lastScore = lastLeft = -1;
+  }
+
+  // Free play: tiles eaten in the pill, tiles still standing under the label.
+  function setScore(eaten, left) {
+    if (eaten !== lastScore) { timeText.textContent = eaten.toLocaleString(); lastScore = eaten; }
+    if (left !== lastLeft) { sub.textContent = `${left.toLocaleString()} left`; lastLeft = left; }
+  }
   function setHint(text) { hint.textContent = text; hint.style.opacity = '1'; }
   function fadeHint() { hint.style.opacity = '0'; }
 
@@ -68,13 +86,22 @@ export function createHUD() {
     sizeLbl.style.transform = `translate(${sx}px, ${sy}px) translateX(-50%)`;
   }
 
-  function setBoosters(counts, active) {
+  // cool (free play only): seconds of recharge left per booster; the badge
+  // shows the countdown, and ∞ when it is ready.
+  function setBoosters(counts, active, cool) {
     for (const b of document.querySelectorAll('.boost')) {
       const k = b.dataset.boost;
-      const n = counts[k] || 0;
-      b.querySelector('.cnt').textContent = n;
-      b.classList.toggle('empty', n <= 0);
-      b.classList.toggle('active', !!(active && active[k] > 0));
+      const isActive = !!(active && active[k] > 0);
+      if (cool) {
+        const c = cool[k] || 0;
+        b.querySelector('.cnt').textContent = c > 0 ? Math.ceil(c) : '∞';
+        b.classList.toggle('empty', c > 0 && !isActive);
+      } else {
+        const n = counts[k] || 0;
+        b.querySelector('.cnt').textContent = n;
+        b.classList.toggle('empty', n <= 0);
+      }
+      b.classList.toggle('active', isActive);
     }
   }
 
@@ -113,5 +140,5 @@ export function createHUD() {
 
   function overlay(id, on) { el(id).classList.toggle('hidden', !on); }
 
-  return { show, setLevel, setGoals, updateGoals, setTimer, setSize, setBoosters, setHint, fadeHint, popup, flyIcon, overlay, fmt };
+  return { show, setLevel, setFree, setScore, setGoals, updateGoals, setTimer, setSize, setBoosters, setHint, fadeHint, popup, flyIcon, overlay, fmt };
 }

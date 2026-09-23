@@ -20,6 +20,8 @@
   .shadowText{color:#fff;font-weight:900;text-shadow:0 2px 0 #1c3a7a,0 3px 8px rgba(0,0,0,.35);letter-spacing:.3px}
   #top{position:relative;height:44px}
   #lvl{position:absolute;left:2px;top:8px;font-size:19px}
+  #sub{position:absolute;left:3px;top:31px;font-size:12px;letter-spacing:.2px}
+  #hud.free #goals,#hud.free .boost[data-boost="time"]{display:none}
   #timer{position:absolute;left:50%;top:0;transform:translateX(-50%);height:42px;min-width:150px;
     background:#233a8a;border:3px solid #17246b;border-radius:24px;display:flex;align-items:center;
     padding:0 18px 0 4px;box-shadow:0 4px 0 #111a52,0 6px 14px rgba(0,0,0,.3)}
@@ -111,6 +113,12 @@
   .btn.orange:active{box-shadow:0 2px 0 #b6580c}
   .btn.ghost{background:#4a2aa8;color:#e9e0ff;box-shadow:0 4px 0 #2d1770;text-shadow:none;font-size:17px;padding:12px}
   .btn.ghost:active{box-shadow:0 1px 0 #2d1770}
+  .btn.mode{padding:11px 20px 10px;line-height:1.1}
+  .btn.mode .big{display:block;font-size:22px}
+  .btn.mode .small{display:block;font-size:12.5px;font-weight:800;opacity:.92;text-shadow:none;margin-top:3px;letter-spacing:.2px}
+  .btn:disabled{opacity:.55;cursor:default;transform:none}
+  .loading{font-size:12px;color:#cdbff5;font-weight:700;margin-top:10px}
+  .loading.hidden{display:none}
   .logo{display:flex;flex-direction:column;align-items:center;gap:2px;margin:4px 0 14px}
   .logo .tiles{display:flex;gap:4px}
   .logo .t{width:36px;height:36px;border-radius:9px;background:#f6ece6;display:flex;align-items:center;justify-content:center;
@@ -143,6 +151,7 @@
 <div id="hud" class="hidden">
   <div id="top">
     <div id="lvl" class="shadowText">LEVEL 1</div>
+    <div id="sub" class="shadowText hidden">0 left</div>
     <div id="timer"><span class="ico">⏱</span><span id="timeText">01:00</span></div>
     <button id="pauseBtn" type="button" aria-label="Pause">❚❚</button>
   </div>
@@ -166,9 +175,10 @@
       <div class="hole">H<b></b>LE</div>
     </div>
     <div class="menuStat"><span id="menuLevel">Level 1</span><span class="coin">🪙 <span id="menuCoins">0</span></span></div>
-    <p id="menuTheme">City</p>
-    <button id="playBtn" class="btn" type="button">Loading…</button>
-    <div class="keys">Drag anywhere, like a thumbstick · <kbd>WASD</kbd> works too<br>Scroll to zoom · <kbd>R</kbd> restarts the level</div>
+    <button id="playBtn" class="btn mode" type="button" disabled><span class="big">Levels</span><span class="small" id="menuTheme">Level 1 · City</span></button>
+    <button id="freeBtn" class="btn mode orange" type="button" disabled><span class="big">Free Play</span><span class="small" id="menuFree">One huge map · no clock, no card</span></button>
+    <div id="menuLoading" class="loading">Loading physics…</div>
+    <div class="keys">Drag anywhere, like a thumbstick · <kbd>WASD</kbd> works too<br>Scroll to zoom · <kbd>R</kbd> restarts</div>
   </div>
 </div>
 
@@ -183,7 +193,7 @@
 
 <div id="win" class="overlay hidden">
   <div class="card">
-    <h1>LEVEL<br>COMPLETE!</h1>
+    <h1 id="winTitle">LEVEL<br>COMPLETE!</h1>
     <div class="stars" id="winStars">★★★</div>
     <div class="timeBox" id="winTime">⏱ 0:00</div>
     <div class="stat" id="winStats"></div>

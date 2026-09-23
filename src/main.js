@@ -6,13 +6,14 @@ import { loadSave, writeSave } from './core/save.js';
 import { Field } from './world/field.js';
 import { createGround } from './world/ground.js';
 import { buildWorld } from './world/build.js';
-import { createHole } from './game/hole.js';
+import { createHole, HOLE } from './game/hole.js';
 import { Debris } from './game/debris.js';
 import { Rigid, L_DISC } from './game/rigid.js';
 import { updateEating } from './game/eat.js';
 import { createProgress } from './game/progress.js';
 import { generateLevel } from './levels/generate.js';
-import { themeForLevel } from './world/themes.js';
+import { generateFreeMap } from './levels/freeplay.js';
+import { THEMES, themeForLevel } from './world/themes.js';
 import { createHUD } from './ui/hud.js';
 import { TILE_TYPES } from './world/tiles.js';
 
@@ -41,12 +42,18 @@ const fx = {
 };
 
 // --- game state ---------------------------------------------------------------
+// Two ways to play: the level path (goal card, clock, themed boards that get
+// harder) and free play (one huge board, no clock, no card, eat it bare).
+// `level` is whichever board is on the table; `level.free` tells them apart.
 let level = null;
 let progress = null;
 let status = 'menu';        // menu | playing | paused | won | lost
 let revived = false;
 const ctx = { level: null, hole, debris, rigid: null, audio, fx, progress: null, fields, time: 0, magnet: 0, consume: null };
 const active = { boost: 0, magnet: 0, time: 0 };
+const cool = { boost: 0, magnet: 0 };           // free play: boosters recharge instead of running out
+const FREE_COOL = { boost: 30, magnet: 25 };
+let run = { tiles: 0 };                          // tiles eaten this board (free-play score)
 const typeIndex = new Map(TILE_TYPES.map((t, i) => [t.id, i]));
 let popCount = 0, popTimer = 0;
 const _p = new THREE.Vector3();
@@ -60,6 +67,7 @@ function screenOf(x, y, z) {
 function onTileEaten(key, layer, x, z) {
   hole.grow(1);
   if (!progress) return;
+  if (layer >= L_DISC) run.tiles++;
   const goal = progress.state.goals.find((g) => g.key === key);
   const counted = goal && goal.have < goal.need;
   progress.credit(key, 1);
@@ -79,8 +87,11 @@ function consume(key, n) {
 ctx.consume = consume;
 ctx.onBomb = () => { if (progress) progress.fail('bomb'); };
 
-function startLevel(n) {
-  level = generateLevel(n);
+function refreshBoosters() { hud.setBoosters(save.boosters, active, level && level.free ? cool : null); }
+
+// Put a board on the table and start playing it.
+function setupBoard(lv) {
+  level = lv;
   buildWorld(level, fields, rigid);
   debris.reset();
   ground.setTheme(level.theme);
@@ -88,41 +99,91 @@ function startLevel(n) {
   engine.setSky(level.theme.sky);
   engine.setBoard(level.board.w, level.board.d);
   hole.reset(level.holeStart);
+  hole.setMax(level.holeMax || HOLE.max);
+  if (dev.r > level.holeStart) hole.grow(Math.round(((dev.r / level.holeStart - 1) / 0.16) ** 2));
   hole.setBounds(level.board.w, level.board.d);
   hole.place(0, 0);
   progress = createProgress(level, { onWin, onLose });
   ctx.level = level; ctx.progress = progress; ctx.time = 0; ctx.magnet = 0;
   active.magnet = active.boost = 0;
+  cool.boost = cool.magnet = 0;
   revived = false;
   popCount = 0; popTimer = 0;
-  hud.setLevel(n);
+  run = { tiles: 0 };
+  hud.setFree(!!level.free);
   hud.setGoals(level.goals);
   hud.updateGoals(progress.state.goals);
-  hud.setTimer(level.time);
-  hud.setBoosters(save.boosters, active);
-  hud.setHint(n === 1 ? 'Collect all goal items to win!' : `${level.theme.name} · fill the goal card before time runs out`);
+  refreshBoosters();
   hud.show(true);
   input.show(true);
   for (const id of ['menu', 'pause', 'win', 'lose']) hud.overlay(id, false);
+  document.getElementById('restartBtn').textContent = level.free ? 'New map' : 'Restart level';
   status = 'playing';
   camInit = false;
   fx.shakeAmt = 0;
 }
 
+function startLevel(n) {
+  setupBoard(generateLevel(n));
+  hud.setLevel(n);
+  hud.setTimer(level.time);
+  hud.setHint(n === 1 ? 'Collect all goal items to win!' : `${level.theme.name} · fill the goal card before time runs out`);
+}
+
+// Free play: a fresh random board each time, worlds taken in turn.
+function startFree() {
+  const theme = THEMES[save.free.runs % THEMES.length];
+  const seed = dev.seed || (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+  save.free.runs++;
+  writeSave(save);
+  setupBoard(generateFreeMap({
+    seed, theme, size: dev.size, tiles: dev.tiles, props: dev.props,
+    voxCap: fields.cube.capacity, beadCap: fields.bead.capacity,
+  }));
+  hud.setScore(0, rigid.nTiles);
+  hud.setHint(`${theme.name} · no clock, no card: eat the whole board`);
+}
+
+// Leaving a free-play board early still banks its coins and best score.
+function bankFreeRun() {
+  if (!level || !level.free || !progress || progress.state.status !== 'playing' || run.tiles === 0) return;
+  save.coins += Math.floor(run.tiles / 20);
+  save.free.best = Math.max(save.free.best, run.tiles);
+  writeSave(save);
+}
+
+function restart() {
+  if (!level) return;
+  if (level.free) { bankFreeRun(); startFree(); } else startLevel(level.n);
+}
+
 function onWin(s) {
   status = 'won';
   audio.victory();
-  const n = level.n;
-  const used = level.time - s.left;
-  const stars = s.left > level.time * 0.5 ? 3 : s.left > level.time * 0.2 ? 2 : 1;
-  const coins = 20 + Math.min(80, n * 2) + stars * 5;
-  save.level = Math.max(save.level, n + 1);
+  const free = level.free;
+  const used = free ? s.elapsed : level.time - s.left;
+  let coins, stars = 3;
+  if (free) {
+    coins = 60 + Math.floor(run.tiles / 20);
+    save.free.best = Math.max(save.free.best, run.tiles);
+  } else {
+    const n = level.n;
+    stars = s.left > level.time * 0.5 ? 3 : s.left > level.time * 0.2 ? 2 : 1;
+    coins = 20 + Math.min(80, n * 2) + stars * 5;
+    save.level = Math.max(save.level, n + 1);
+    if (n % 3 === 0) { const k = ['boost', 'magnet', 'time'][(n / 3) % 3]; save.boosters[k] = (save.boosters[k] || 0) + 1; }
+  }
   save.coins += coins;
-  if (n % 3 === 0) { const k = ['boost', 'magnet', 'time'][(n / 3) % 3]; save.boosters[k] = (save.boosters[k] || 0) + 1; }
   writeSave(save);
-  document.getElementById('winStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+  document.getElementById('winTitle').innerHTML = free ? 'MAP<br>CLEARED!' : 'LEVEL<br>COMPLETE!';
+  const starsEl = document.getElementById('winStars');
+  starsEl.classList.toggle('hidden', free);
+  starsEl.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
   document.getElementById('winTime').textContent = '⏱ ' + hud.fmt(used);
-  document.getElementById('winStats').innerHTML = `+${coins} 🪙 &nbsp;·&nbsp; ${hole.state.eaten.toLocaleString()} tiles eaten`;
+  document.getElementById('winStats').innerHTML = free
+    ? `+${coins} 🪙 &nbsp;·&nbsp; ${run.tiles.toLocaleString()} tiles and ${level.props.length} props eaten`
+    : `+${coins} 🪙 &nbsp;·&nbsp; ${hole.state.eaten.toLocaleString()} tiles eaten`;
+  document.getElementById('nextBtn').textContent = free ? 'New map' : 'Continue';
   setTimeout(() => { if (status === 'won') { input.show(false); hud.overlay('win', true); } }, 1000);
 }
 
@@ -139,13 +200,17 @@ function onLose(s) {
 }
 
 function showMenu() {
+  bankFreeRun();
   status = 'menu';
   hud.show(false);
   input.show(false);
   for (const id of ['pause', 'win', 'lose']) hud.overlay(id, false);
   document.getElementById('menuLevel').textContent = `Level ${save.level}`;
   document.getElementById('menuCoins').textContent = save.coins.toLocaleString();
-  document.getElementById('menuTheme').textContent = themeForLevel(save.level).name;
+  document.getElementById('menuTheme').textContent = `Level ${save.level} · ${themeForLevel(save.level).name}`;
+  document.getElementById('menuFree').textContent = save.free.best
+    ? `One huge map · best ${save.free.best.toLocaleString()} tiles`
+    : 'One huge map · no clock, no card';
   hud.overlay('menu', true);
   if (!level && rigid) {
     level = generateLevel(save.level);
@@ -159,24 +224,30 @@ function showMenu() {
 
 // --- buttons ------------------------------------------------------------------
 const playBtn = document.getElementById('playBtn');
-playBtn.disabled = true;
+const freeBtn = document.getElementById('freeBtn');
 Rigid.init().then(() => {
   rigid = new Rigid(scene);
   rigid.onConsumed = onTileEaten;
   rigid.onOverflow = (x, y, z, vx, vy, vz, col, key, shape) => debris.spawn(x, y, z, vx, vy, vz, col, key, shape, true);
   debris.onConsumed = consume;
   ctx.rigid = rigid;
-  playBtn.disabled = false;
-  playBtn.textContent = 'Play';
+  playBtn.disabled = freeBtn.disabled = false;
+  document.getElementById('menuLoading').classList.add('hidden');
   if (status === 'menu') showMenu();
 });
 
-const forcedLevel = parseInt(new URLSearchParams(location.search).get('level')) || 0;
+// Dev shortcuts: ?level=N, ?r=6 (start with a bigger hole), and for free play
+// ?size=, ?tiles=, ?props=, ?seed= to get a small or repeatable board.
+const q = new URLSearchParams(location.search);
+const num = (k) => { const v = parseFloat(q.get(k)); return Number.isFinite(v) ? v : undefined; };
+const forcedLevel = num('level') || 0;
+const dev = { r: num('r') || 0, size: num('size'), tiles: num('tiles'), props: num('props'), seed: num('seed') };
 const on = (id, fn) => document.getElementById(id).addEventListener('click', (e) => { audio.unlock(); fn(e); });
 on('playBtn', () => { if (rigid) startLevel(forcedLevel || save.level); });
-on('nextBtn', () => startLevel(level.n + 1));
+on('freeBtn', () => { if (rigid) startFree(); });
+on('nextBtn', () => { if (level.free) startFree(); else startLevel(level.n + 1); });
 on('retryBtn', () => startLevel(level.n));
-on('restartBtn', () => startLevel(level.n));
+on('restartBtn', restart);
 on('homeBtn', showMenu);
 on('loseHomeBtn', showMenu);
 on('pauseBtn', () => { if (status === 'playing') { status = 'paused'; hud.overlay('pause', true); } });
@@ -195,24 +266,31 @@ on('soundBtn', (e) => {
 });
 document.getElementById('soundBtn').textContent = save.sound ? '🔊' : '🔇';
 
+// Boosters: a stock you earn through the levels; in free play they are free
+// but recharge after use (+30s means nothing there and is hidden).
 for (const b of document.querySelectorAll('.boost')) {
   b.addEventListener('click', () => {
     if (status !== 'playing') return;
     const k = b.dataset.boost;
-    if (!save.boosters[k] || (k !== 'time' && active[k] > 0)) return;
-    save.boosters[k]--;
-    writeSave(save);
+    if (level.free) {
+      if (k === 'time' || active[k] > 0 || cool[k] > 0) return;
+      cool[k] = FREE_COOL[k];
+    } else {
+      if (!save.boosters[k] || (k !== 'time' && active[k] > 0)) return;
+      save.boosters[k]--;
+      writeSave(save);
+    }
     if (k === 'boost') { active.boost = 10; hole.boost(10); }
     if (k === 'magnet') { active.magnet = 7; ctx.magnet = 7; }
     if (k === 'time') progress.addTime(30);
     audio.boost();
-    hud.setBoosters(save.boosters, active);
+    refreshBoosters();
   });
 }
 
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if (k === 'r' && level && status !== 'menu') startLevel(level.n);
+  if (k === 'r' && level && status !== 'menu') restart();
   if (k === 'escape' || k === 'p') {
     if (status === 'playing') { status = 'paused'; hud.overlay('pause', true); }
     else if (status === 'paused') { status = 'playing'; hud.overlay('pause', false); }
@@ -243,6 +321,7 @@ function updateCamera(dt) {
   }
   camera.lookAt(camLook);
   engine.sky.position.copy(camera.position);
+  engine.followSun(hole.state.x, hole.state.z);
 
   const [sx, sy] = screenOf(hole.state.x, 0, hole.state.z + r * 1.35);
   hud.setSize(hole.state.size, sx, sy + 2);
@@ -277,9 +356,19 @@ function frame(now) {
     if (active.magnet > 0) {
       active.magnet -= dt; ctx.magnet = active.magnet;
       rigid.magnet(hole.state, hole.state.r * 3.5 + 2, 0.06);
-      if (active.magnet <= 0) hud.setBoosters(save.boosters, active);
+      if (active.magnet <= 0) refreshBoosters();
     }
-    if (active.boost > 0) { active.boost -= dt; if (active.boost <= 0) hud.setBoosters(save.boosters, active); }
+    if (active.boost > 0) { active.boost -= dt; if (active.boost <= 0) refreshBoosters(); }
+    if (level.free) {
+      let changed = false;
+      for (const k of ['boost', 'magnet']) {
+        if (cool[k] <= 0) continue;
+        const before = Math.ceil(cool[k]);
+        cool[k] = Math.max(0, cool[k] - dt);
+        if (Math.ceil(cool[k]) !== before) changed = true;
+      }
+      if (changed) refreshBoosters();
+    }
 
     updateEating(dt, ctx);
     rigid.update(dt, hole.state);
@@ -296,12 +385,20 @@ function frame(now) {
     }
 
     progress.update(dt);
-    if (playing && progress.state.left <= 10 && progress.state.started) {
-      tick += dt;
-      if (tick >= 1) { tick = 0; audio.tick(); }
+    if (level.free) {
+      if (playing) {
+        const left = rigid.nTiles;
+        hud.setScore(run.tiles, left);
+        if (left === 0 && level.props.every((o) => o.state === 'gone')) progress.finish();
+      }
+    } else {
+      if (playing && progress.state.left <= 10 && progress.state.started) {
+        tick += dt;
+        if (tick >= 1) { tick = 0; audio.tick(); }
+      }
+      hud.updateGoals(progress.state.goals);
+      hud.setTimer(progress.state.left);
     }
-    hud.updateGoals(progress.state.goals);
-    hud.setTimer(progress.state.left);
   } else if (status === 'menu') {
     hole.update(dt, NO_MOVE);
     ground.setHole(hole.state.x, hole.state.z, hole.state.r);
@@ -319,20 +416,23 @@ window.__debug = {
   rigid: () => rigid,
   engine: () => engine,
   status: () => status,
-  level: () => level && { n: level.n, theme: level.theme.id, tiles: level.totalTiles, board: level.board },
+  level: () => level && { n: level.n, free: !!level.free, theme: level.theme.id, tiles: level.totalTiles, props: level.props.length, board: level.board },
   targets: () => {
     if (!rigid) return [];
     const out = [];
     for (let L = 2; L < rigid.layers.length; L++) {
-      for (const b of rigid.layers[L].bodies) { const t = b.body.translation(); out.push({ x: t.x, z: t.z, y: t.y, key: b.key }); }
+      for (const b of rigid.layers[L].bodies) out.push({ x: b.px, z: b.pz, y: b.body ? b.body.translation().y : b.y, key: b.key });
     }
     for (const o of (level ? level.props : [])) if (o.state === 'idle') out.push({ x: o.x, z: o.z, y: 0, key: 'prop', need: o.need });
     return out;
   },
   hole: () => ({ ...hole.state }),
   progress: () => progress && JSON.parse(JSON.stringify(progress.state)),
+  run: () => ({ ...run, left: rigid ? rigid.nTiles : 0 }),
   active: () => (rigid ? rigid.nAct : 0),
+  live: () => (rigid ? rigid.nLive : 0),
   start: (n) => startLevel(n),
+  startFree: () => startFree(),
   setMove: (x, z) => { forcedMove = (x === null || x === undefined) ? null : { x, z }; },
   perf: () => { const o = { avgMs: (perf.total / perf.frames * 1000), worstMs: perf.worst * 1000, updateMs: perf.update / perf.frames }; perf.frames = perf.total = perf.worst = perf.update = 0; return o; },
 };
