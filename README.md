@@ -42,8 +42,10 @@ Pick a way to play on the title screen:
 
 - A 220×220 board with about 6,000 tiles and up to ~90 voxel props from one
   world (the worlds take turns, one per run). Stacks are low in the middle
-  and tall at the edges; props are laid out by how big a hole they need, the
-  landmarks (tower, Ferris wheel, burger...) furthest out.
+  and tall at the edges; props are laid out by their footprint, the
+  landmarks (tower, Ferris wheel, burger...) furthest out. Every structure can
+  lose blocks when the hole removes their support, even at the starting size.
+  Supported sections remain standing; fallen blocks stay where they land.
 - The hole can grow past the level cap, up to about 13 units across, so
   nothing on the board is out of reach.
 - The pill at the top counts tiles eaten; under the level label is how many
@@ -84,7 +86,7 @@ src/
   world/    picture tiles (icon atlas, geometries, materials), voxel sculpting for props,
             themes/palettes, instanced voxel pools, the board ground
   levels/   the level generator (layout, growth curve, goal card, clock) and the free-play board
-  game/     the hole, rigid bodies + the pit (Rapier), prop eating (sink / topple / peel), debris, progress
+  game/     the hole, streamed block and tile physics + the pit (Rapier), hazards, debris, progress
   ui/       HUD and overlays
 ```
 
@@ -96,7 +98,10 @@ an instance, no body) and get a body only inside a ring around the hole, which
 is what lets the free-play board hold thousands of tiles. The hole is a
 heightfield patch punched into the ground collider that follows the hole and
 grows with it, which is what makes a tile hanging over the rim tip in. Voxel
-props use a second path: they sink and topple while their voxels peel off the
-bottom into the shaft.
+props use the same streamed Rapier physics: each block has its own collider,
+gravity, friction, and contact with its neighbours. Their original instanced
+voxel artwork stays in place; only moving blocks update their transforms.
+There is no whole-structure sinking, pulling, or automatic credit for blocks
+that have not fallen into the pit.
 
 All models and code are original.

@@ -355,7 +355,7 @@ function frame(now) {
 
     if (active.magnet > 0) {
       active.magnet -= dt; ctx.magnet = active.magnet;
-      rigid.magnet(hole.state, hole.state.r * 3.5 + 2, 0.06);
+      rigid.magnet(hole.state, hole.state.r * 3.5 + 2, 0.06 * dt * 60);
       if (active.magnet <= 0) refreshBoosters();
     }
     if (active.boost > 0) { active.boost -= dt; if (active.boost <= 0) refreshBoosters(); }
@@ -423,7 +423,7 @@ window.__debug = {
     for (let L = 2; L < rigid.layers.length; L++) {
       for (const b of rigid.layers[L].bodies) out.push({ x: b.px, z: b.pz, y: b.body ? b.body.translation().y : b.y, key: b.key });
     }
-    for (const o of (level ? level.props : [])) if (o.state === 'idle') out.push({ x: o.x, z: o.z, y: 0, key: 'prop', need: o.need });
+    for (const b of rigid.propVoxels) out.push({ x: b.px, z: b.pz, y: b.body ? b.body.translation().y : b.y, key: 'prop' });
     return out;
   },
   hole: () => ({ ...hole.state }),

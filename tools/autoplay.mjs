@@ -93,7 +93,6 @@ if (seconds > 0) {
       const goals = new Set((p ? p.goals : []).filter(g => g.have < g.need).map(g => g.key));
       let best = null, bd = 1e9;
       for (const o of __debug.targets()) {
-        if (o.need !== undefined && o.need > h.r) continue;
         if (goals.size && !goals.has(o.key) && o.key !== 'prop') continue;
         const d = Math.hypot(o.x - h.x, o.z - h.z);
         if (d < bd) { bd = d; best = o; }
