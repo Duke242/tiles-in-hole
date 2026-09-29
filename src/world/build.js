@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { BEAD } from './voxel.js';
 
-// Puts a generated level on the board: tiles become sleeping rigid bodies,
-// voxel props claim instanced voxels and are written once at rest.
+// Both picture tiles and structure blocks have streamed rigid bodies.
+// Structure blocks keep the original voxel fields for their appearance.
 const _q = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -22,10 +22,15 @@ export function buildWorld(level, fields, rigid) {
     }
     o.refs = [cubes.length ? fields.cube.alloc(cubes) : null, beads.length ? fields.bead.alloc(beads) : null];
     o.state = 'idle';
-    o.shake = 0;
-    o.peeled = 0;
     _q.setFromAxisAngle(UP, o.yaw);
     writeObject(o, fields, o.x, 0, o.z, _q);
+    o.remaining = o.model.count;
+    if (!o.model.bomb) {
+      for (const v of o.model.vox) {
+        const field = v.fi ? fields.bead : fields.cube;
+        rigid.spawnPropVoxel(o, v, field, o.refs[v.fi], _q);
+      }
+    }
   }
   fields.cube.flush();
   fields.bead.flush();

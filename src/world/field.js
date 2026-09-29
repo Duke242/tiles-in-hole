@@ -80,6 +80,16 @@ export class Field {
     this.ranges.push(start, count);
   }
 
+  // A structure block driven by Rapier keeps its original instance and material.
+  writePart(ref, i, position, rotation) {
+    _obj.position.set(position.x, position.y, position.z);
+    _obj.quaternion.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    _obj.scale.setScalar(VOX_SCALE);
+    _obj.updateMatrix();
+    this.mesh.setMatrixAt(ref.base + i, _obj.matrix);
+    this.touch(ref.base + i, 1);
+  }
+
   hidePart(ref, i) {
     if (!ref.hidden) ref.hidden = new Uint8Array(ref.n);
     ref.hidden[i] = 1;

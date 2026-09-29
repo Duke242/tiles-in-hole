@@ -4,8 +4,8 @@ import { makeVoxelMaterial, VOX_SCALE } from '../world/material.js';
 import { discGeometry, diceGeometry, makeIconMaterial, makeSideMaterial, DISC_R, DISC_H, DICE_S, TILE_TYPES } from '../world/tiles.js';
 
 // Everything that can fall is a Rapier rigid body: every picture tile on the
-// board (asleep until the hole comes near) and every voxel shed by a sinking
-// prop. The hole is a real pit in the ground, a heightfield patch that moves
+// board and every block in a structure (asleep until the hole comes near).
+// The hole is a real pit in the ground, a heightfield patch that moves
 // with it, so a tile hanging over the rim tips in the way it should, and a
 // stack standing over the void drops as one column.
 //
@@ -23,15 +23,36 @@ const G_ON = (0x0002 << 16) | 0x0007;       // body: board + bodies + pit
 const G_OFF = (0x0002 << 16) | 0x0006;      // body over the hole: bodies + pit
 
 const PIT_N = 56;
+const CELL_SIZE = 12;
+const STEP = 1 / 60;
 const _o = new THREE.Object3D();
 const _c = new THREE.Color();
 const _q = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
 
+// Preserve the same instance data, but upload only slots that changed.
+function dirtyRange(attr, start, count) {
+  if (attr.updateRanges.length >= 64) {
+    let end = start + count;
+    for (const range of attr.updateRanges) {
+      start = Math.min(start, range.start);
+      end = Math.max(end, range.start + range.count);
+    }
+    attr.clearUpdateRanges();
+    count = end - start;
+  }
+  attr.addUpdateRange(start, count);
+  attr.needsUpdate = true;
+}
+
 export class Rigid {
   static async init() { await RAPIER.init(); }
 
   constructor(scene, { caps = [1200, 500, 7000, 5000] } = {}) {
+    this.dormant = new Map();
+    this.live = new Set();
+    this.propVoxels = new Set();
+    this.accumulator = 0;
     this.world = new RAPIER.World({ x: 0, y: -30, z: 0 });
     this.world.timestep = 1 / 60;
 
@@ -62,7 +83,7 @@ export class Rigid {
         geo.setAttribute('aIcon', icon);
       }
       scene.add(mesh);
-      return { mesh, icon, bodies: [], cap, written: 0 };
+      return { mesh, icon, bodies: [], cap };
     };
     this.layers = [
       mk(new THREE.BoxGeometry(1, 1, 1), makeVoxelMaterial(), caps[0], false),
@@ -76,17 +97,44 @@ export class Rigid {
     this.bound = 1e9;
   }
 
-  get nAct() { let n = 0; for (const l of this.layers) n += l.bodies.length; return n; }
-  get nLive() { let n = 0; for (const l of this.layers) for (const b of l.bodies) if (b.body) n++; return n; }
+  get nAct() { let n = this.propVoxels.size; for (const l of this.layers) n += l.bodies.length; return n; }
+  get nLive() { return this.live.size; }
   get nVox() { return this.layers[0].bodies.length + this.layers[1].bodies.length; }
   get nTiles() { return this.layers[L_DISC].bodies.length + this.layers[L_DICE].bodies.length; }
   get voxCap() { return this.layers[0].cap; }
 
   reset() {
+    for (const b of this.live) this.world.removeRigidBody(b.body);
+    this.dormant.clear(); this.live.clear(); this.accumulator = 0;
+    this.propVoxels.clear();
     for (const l of this.layers) {
-      for (const b of l.bodies) if (b.body) this.world.removeRigidBody(b.body);
       l.bodies.length = 0;
       l.mesh.count = 0;
+    }
+  }
+
+  _storeDormant(b) {
+    const key = Math.floor(b.px / CELL_SIZE) + ',' + Math.floor(b.pz / CELL_SIZE);
+    b.cell = key;
+    if (!this.dormant.has(key)) this.dormant.set(key, new Set());
+    this.dormant.get(key).add(b);
+  }
+
+  _forgetDormant(b) {
+    const cell = this.dormant.get(b.cell);
+    if (cell) {
+      cell.delete(b);
+      if (!cell.size) this.dormant.delete(b.cell);
+    }
+    b.cell = null;
+  }
+
+  _visitDormant(x, z, radius, visit) {
+    for (let iz = Math.floor((z - radius) / CELL_SIZE); iz <= Math.floor((z + radius) / CELL_SIZE); iz++) {
+      for (let ix = Math.floor((x - radius) / CELL_SIZE); ix <= Math.floor((x + radius) / CELL_SIZE); ix++) {
+        const cell = this.dormant.get(ix + ',' + iz);
+        if (cell) for (const b of cell) visit(b);
+      }
     }
   }
 
@@ -107,6 +155,10 @@ export class Rigid {
   }
 
   _writeSlot(l, b) {
+    if (b.prop) {
+      b.field.writePart(b.ref, b.part, b.body.translation(), b.body.rotation());
+      return;
+    }
     if (b.body) {
       const t = b.body.translation(), q = b.body.rotation();
       _o.position.set(t.x, t.y, t.z);
@@ -118,7 +170,7 @@ export class Rigid {
     _o.scale.set(b.sx, b.sy, b.sz);
     _o.updateMatrix();
     l.mesh.setMatrixAt(b.slot, _o.matrix);
-    l.written++;
+    dirtyRange(l.mesh.instanceMatrix, b.slot * 16, 16);
   }
 
   _add(L, rec) {
@@ -135,10 +187,11 @@ export class Rigid {
       rec.asleep = true;
     }
     l.bodies.push(rec);
+    if (rec.body) this.live.add(rec); else this._storeDormant(rec);
     l.mesh.count = l.bodies.length;
     l.mesh.setColorAt(rec.slot, rec.col);
-    l.mesh.instanceColor.needsUpdate = true;
-    if (l.icon) { l.icon.array[rec.slot] = rec.icon; l.icon.needsUpdate = true; }
+    dirtyRange(l.mesh.instanceColor, rec.slot * 3, 3);
+    if (l.icon) { l.icon.array[rec.slot] = rec.icon; dirtyRange(l.icon, rec.slot, 1); }
     this._writeSlot(l, rec);
     l.mesh.instanceMatrix.needsUpdate = true;
     return rec;
@@ -156,21 +209,23 @@ export class Rigid {
 
   _remove(L, i) {
     const l = this.layers[L];
+    this.live.delete(l.bodies[i]);
+    this._forgetDormant(l.bodies[i]);
     if (l.bodies[i].body) this.world.removeRigidBody(l.bodies[i].body);
     const last = l.bodies.pop();
     if (i < l.bodies.length) {
       l.bodies[i] = last;
       last.slot = i;
       l.mesh.setColorAt(i, last.col);
-      l.mesh.instanceColor.needsUpdate = true;
-      if (l.icon) { l.icon.array[i] = last.icon; l.icon.needsUpdate = true; }
+      dirtyRange(l.mesh.instanceColor, i * 3, 3);
+      if (l.icon) { l.icon.array[i] = last.icon; dirtyRange(l.icon, i, 1); }
       this._writeSlot(l, last);
       l.mesh.instanceMatrix.needsUpdate = true;
     }
     l.mesh.count = l.bodies.length;
   }
 
-  // A loose voxel shed by a sinking prop.
+  // A loose effect voxel, separate from persistent structure blocks.
   spawn(x, y, z, vx, vy, vz, col, key, shape = 0) {
     const bd = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(x, y, z)
@@ -201,6 +256,7 @@ export class Rigid {
   // Give a dormant tile a body at its stored pose. It starts asleep; the
   // wake pass below rouses it if the hole is already close.
   _materialize(b) {
+    this._forgetDormant(b);
     const bd = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(b.x, b.y, b.z)
       .setRotation({ x: b.qx, y: b.qy, z: b.qz, w: b.qw })
@@ -208,9 +264,14 @@ export class Rigid {
       .setAngularDamping(0.5)
       .setSleeping(true);
     b.body = this.world.createRigidBody(bd);
-    b.collider = this.world.createCollider(this._tileCollider(b.kind, b.sx, b.sy), b.body);
+    const collider = b.prop
+      ? (b.layer === L_BEAD ? RAPIER.ColliderDesc.ball(0.5) : RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5))
+        .setFriction(0.8).setRestitution(0.02).setDensity(1.2).setCollisionGroups(G_ON)
+      : this._tileCollider(b.kind, b.sx, b.sy);
+    b.collider = this.world.createCollider(collider, b.body);
     b.offGround = false;
     b.asleep = true;
+    this.live.add(b);
   }
 
   // A settled tile far from the hole keeps its pose and drops its body.
@@ -218,8 +279,10 @@ export class Rigid {
     const t = b.body.translation(), q = b.body.rotation();
     b.x = t.x; b.y = t.y; b.z = t.z;
     b.qx = q.x; b.qy = q.y; b.qz = q.z; b.qw = q.w;
+    b.px = t.x; b.pz = t.z;
     this.world.removeRigidBody(b.body);
     b.body = null; b.collider = null;
+    this.live.delete(b); this._storeDormant(b);
   }
 
   // A picture tile. kind: L_DISC or L_DICE. scale widens it, tall stretches it
@@ -235,19 +298,42 @@ export class Rigid {
     });
   }
 
+  spawnPropVoxel(prop, voxel, field, ref, rotation) {
+    _o.position.set(voxel.x, voxel.y + 0.5, voxel.z).applyQuaternion(rotation);
+    const b = {
+      prop, field, ref, part: voxel.li, layer: voxel.fi, key: voxel.c,
+      body: null, collider: null, asleep: true, offGround: false,
+      x: prop.x + _o.position.x, y: _o.position.y, z: prop.z + _o.position.z,
+      qx: rotation.x, qy: rotation.y, qz: rotation.z, qw: rotation.w,
+    };
+    b.px = b.x; b.pz = b.z;
+    this.propVoxels.add(b);
+    this._storeDormant(b);
+    return b;
+  }
+
+  _removePropVoxel(b) {
+    if (b.body) this.world.removeRigidBody(b.body);
+    this.live.delete(b); this._forgetDormant(b); this.propVoxels.delete(b);
+    b.field.hidePart(b.ref, b.part);
+    b.prop.remaining--;
+    if (b.prop.remaining === 0) b.prop.state = 'gone';
+  }
+
   // Booster: tug everything within R toward the hole.
   magnet(hole, R, k) {
     const { x: hx, z: hz } = hole;
     const R2 = R * R;
-    for (const l of this.layers) {
-      for (const b of l.bodies) {
-        const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
-        if (d2 > R2 || d2 < 0.3) continue;
-        const d = Math.sqrt(d2);
-        if (!b.body) this._materialize(b);
-        b.body.wakeUp(); b.asleep = false;
-        b.body.applyImpulse({ x: (dx / d) * k, y: 0, z: (dz / d) * k }, true);
-      }
+    this._visitDormant(hx, hz, R, b => {
+      const dx = hx - b.px, dz = hz - b.pz;
+      if (dx * dx + dz * dz <= R2) this._materialize(b);
+    });
+    for (const b of this.live) {
+      const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
+      if (d2 > R2 || d2 < 0.3) continue;
+      const d = Math.sqrt(d2);
+      b.body.wakeUp(); b.asleep = false;
+      b.body.applyImpulse({ x: (dx / d) * k, y: 0, z: (dz / d) * k }, true);
     }
   }
 
@@ -264,52 +350,49 @@ export class Rigid {
     const wakeR2 = (r * 1.3 + 0.9) ** 2;
     const live = r * 2 + 7;
     const liveR2 = live * live, dropR2 = (live + 6) ** 2;
-    for (const l of this.layers) {
-      for (const b of l.bodies) {
-        if (!b.asleep) continue;
-        const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
-        if (b.body) {
-          // Rapier wakes a sleeping tile itself when something moving touches
-          // it; track it from then on so its picture follows its body.
-          if (d2 < wakeR2 || !b.body.isSleeping()) { b.body.wakeUp(); b.asleep = false; }
-          else if (d2 > dropR2 && l.icon) this._dematerialize(b);
-        } else if (d2 < liveR2) {
-          this._materialize(b);
-          if (d2 < wakeR2) { b.body.wakeUp(); b.asleep = false; }
-        }
-      }
+    this._visitDormant(hx, hz, live, b => {
+      const dx = b.px - hx, dz = b.pz - hz;
+      if (dx * dx + dz * dz < liveR2) this._materialize(b);
+    });
+    for (const b of this.live) {
+      if (!b.asleep) continue;
+      const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
+      // Rapier wakes a sleeping tile itself when something moving touches
+      // it; track it from then on so its picture follows its body.
+      if (d2 < wakeR2 || !b.body.isSleeping()) { b.body.wakeUp(); b.asleep = false; }
+      else if (d2 > dropR2 && (b.prop || b.layer >= L_DISC)) this._dematerialize(b);
+    }
+    // Fractional frames accumulate instead of advancing physics twice as fast
+    // on 120 Hz screens. Discard excess backlog after a stall.
+    this.accumulator = Math.min(this.accumulator + dt, STEP * 3);
+    while (this.accumulator + 1e-9 >= STEP) {
+      this.world.step();
+      this.accumulator = Math.max(0, this.accumulator - STEP);
     }
 
-    let steps = Math.min(3, Math.max(1, Math.round(dt / (1 / 60))));
-    while (steps-- > 0) this.world.step();
-
     const holeR2 = r * r * 0.98;
-    for (let L = 0; L < this.layers.length; L++) {
-      const l = this.layers[L];
-      l.written = 0;
-      for (let i = l.bodies.length - 1; i >= 0; i--) {
-        const b = l.bodies[i];
-        if (b.asleep) continue;
-        const t = b.body.translation();
-        b.px = t.x; b.pz = t.z;
-        if (t.y < this.deep || Math.abs(t.x) > this.bound || Math.abs(t.z) > this.bound) {
-          if (this.onConsumed && t.y > -40) this.onConsumed(b.key, L, t.x, t.z);
-          this._remove(L, i);
-          continue;
-        }
-        // Off the ground while over the hole, and for good once it is under
-        // the board: the ground is a 2-deep slab, and a tile still inside it
-        // when the hole moves on would be shoved back up onto the board.
-        const dx = t.x - hx, dz = t.z - hz;
-        const over = (dx * dx + dz * dz) < holeR2 || t.y < 0.05;
-        if (over !== b.offGround) {
-          b.offGround = over;
-          b.collider.setCollisionGroups(over ? G_OFF : G_ON);
-        }
-        this._writeSlot(l, b);
-        if (b.body.isSleeping()) b.asleep = true;
+    for (const b of this.live) {
+      const L = b.layer, l = this.layers[L];
+      if (b.asleep && b.body.isSleeping()) continue;
+      b.asleep = false;
+      const t = b.body.translation();
+      b.px = t.x; b.pz = t.z;
+      if (t.y < this.deep || Math.abs(t.x) > this.bound || Math.abs(t.z) > this.bound) {
+        if (this.onConsumed && t.y > -40) this.onConsumed(b.key, L, t.x, t.z);
+        if (b.prop) this._removePropVoxel(b); else this._remove(L, b.slot);
+        continue;
       }
-      if (l.written) l.mesh.instanceMatrix.needsUpdate = true;
+      // Off the ground while over the hole, and for good once it is under
+      // the board: the ground is a 2-deep slab, and a tile still inside it
+      // when the hole moves on would be shoved back up onto the board.
+      const dx = t.x - hx, dz = t.z - hz;
+      const over = (dx * dx + dz * dz) < holeR2 || t.y < 0.05;
+      if (over !== b.offGround) {
+        b.offGround = over;
+        b.collider.setCollisionGroups(over ? G_OFF : G_ON);
+      }
+      this._writeSlot(l, b);
+      if (b.body.isSleeping()) b.asleep = true;
     }
   }
 }
