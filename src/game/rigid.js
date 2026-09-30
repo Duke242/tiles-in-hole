@@ -19,12 +19,14 @@ export const L_CUBE = 0, L_BEAD = 1, L_DISC = 2, L_DICE = 3;
 
 const G_GROUND = (0x0001 << 16) | 0x0002;   // flat board: bodies only
 const G_PIT = (0x0004 << 16) | 0x0002;      // pit patch: bodies only
-const G_ON = (0x0002 << 16) | 0x0007;       // body: board + bodies + pit
+const G_ON = (0x0002 << 16) | 0x0003;       // supported body: board + bodies
 const G_OFF = (0x0002 << 16) | 0x0006;      // body over the hole: bodies + pit
 
 const PIT_N = 56;
 const CELL_SIZE = 12;
 const STEP = 1 / 60;
+const BREAK_FORCE = 100;
+const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 const _o = new THREE.Object3D();
 const _c = new THREE.Color();
 const _q = new THREE.Quaternion();
@@ -52,6 +54,8 @@ export class Rigid {
     this.dormant = new Map();
     this.live = new Set();
     this.propVoxels = new Set();
+    this.colliderRecords = new Map();
+    this.events = new RAPIER.EventQueue(true);
     this.accumulator = 0;
     this.world = new RAPIER.World({ x: 0, y: -30, z: 0 });
     this.world.timestep = 1 / 60;
@@ -107,6 +111,7 @@ export class Rigid {
     for (const b of this.live) this.world.removeRigidBody(b.body);
     this.dormant.clear(); this.live.clear(); this.accumulator = 0;
     this.propVoxels.clear();
+    this.colliderRecords.clear(); this.events.clear();
     for (const l of this.layers) {
       l.bodies.length = 0;
       l.mesh.count = 0;
@@ -187,6 +192,7 @@ export class Rigid {
       rec.asleep = true;
     }
     l.bodies.push(rec);
+    if (rec.collider) this.colliderRecords.set(rec.collider.handle, rec);
     if (rec.body) this.live.add(rec); else this._storeDormant(rec);
     l.mesh.count = l.bodies.length;
     l.mesh.setColorAt(rec.slot, rec.col);
@@ -211,6 +217,7 @@ export class Rigid {
     const l = this.layers[L];
     this.live.delete(l.bodies[i]);
     this._forgetDormant(l.bodies[i]);
+    if (l.bodies[i].collider) this.colliderRecords.delete(l.bodies[i].collider.handle);
     if (l.bodies[i].body) this.world.removeRigidBody(l.bodies[i].body);
     const last = l.bodies.pop();
     if (i < l.bodies.length) {
@@ -256,8 +263,14 @@ export class Rigid {
   // Give a dormant tile a body at its stored pose. It starts asleep; the
   // wake pass below rouses it if the hole is already close.
   _materialize(b) {
+    const group = this._bondedGroup(b);
+    for (const block of group) if (!block.body) this._createBody(block);
+    for (const block of group) for (const bond of block.bonds || []) this._joinBond(bond);
+  }
+
+  _createBody(b) {
     this._forgetDormant(b);
-    const bd = RAPIER.RigidBodyDesc.dynamic()
+    const bd = (b.attached ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic())
       .setTranslation(b.x, b.y, b.z)
       .setRotation({ x: b.qx, y: b.qy, z: b.qz, w: b.qw })
       .setLinearDamping(0.08)
@@ -269,17 +282,32 @@ export class Rigid {
         .setFriction(0.8).setRestitution(0.02).setDensity(1.2).setCollisionGroups(G_ON)
       : this._tileCollider(b.kind, b.sx, b.sy);
     b.collider = this.world.createCollider(collider, b.body);
+    if (b.prop) b.collider.setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+    if (b.prop) b.collider.setContactForceEventThreshold(BREAK_FORCE);
+    this.colliderRecords.set(b.collider.handle, b);
     b.offGround = false;
     b.asleep = true;
     this.live.add(b);
   }
 
   // A settled tile far from the hole keeps its pose and drops its body.
-  _dematerialize(b) {
+  _dematerialize(b, hole, dropR2 = 0, checked = new Set()) {
+    const group = this._bondedGroup(b);
+    for (const block of group) checked.add(block);
+    if (group.some(block => block.body && !block.attached && !block.body.isSleeping())) return;
+    if (hole && group.some(block => (block.px-hole.x)**2+(block.pz-hole.z)**2<=dropR2)) return;
+    for (const block of group) for (const bond of block.bonds || []) {
+      if (bond.joint) { this.world.removeImpulseJoint(bond.joint, false); bond.joint = null; }
+    }
+    for (const block of group) if (block.body) this._storeBody(block);
+  }
+
+  _storeBody(b) {
     const t = b.body.translation(), q = b.body.rotation();
     b.x = t.x; b.y = t.y; b.z = t.z;
     b.qx = q.x; b.qy = q.y; b.qz = q.z; b.qw = q.w;
     b.px = t.x; b.pz = t.z;
+    this.colliderRecords.delete(b.collider.handle);
     this.world.removeRigidBody(b.body);
     b.body = null; b.collider = null;
     this.live.delete(b); this._storeDormant(b);
@@ -302,6 +330,7 @@ export class Rigid {
     _o.position.set(voxel.x, voxel.y + 0.5, voxel.z).applyQuaternion(rotation);
     const b = {
       prop, field, ref, part: voxel.li, layer: voxel.fi, key: voxel.c,
+      local: {x:voxel.x,y:voxel.y,z:voxel.z},
       body: null, collider: null, asleep: true, offGround: false,
       x: prop.x + _o.position.x, y: _o.position.y, z: prop.z + _o.position.z,
       qx: rotation.x, qy: rotation.y, qz: rotation.z, qw: rotation.w,
@@ -313,11 +342,64 @@ export class Rigid {
   }
 
   _removePropVoxel(b) {
+    this._breakBonds(b);
+    b.structure?.blocks.delete(b);
+    if (b.collider) this.colliderRecords.delete(b.collider.handle);
     if (b.body) this.world.removeRigidBody(b.body);
     this.live.delete(b); this._forgetDormant(b); this.propVoxels.delete(b);
     b.field.hidePart(b.ref, b.part);
     b.prop.remaining--;
     if (b.prop.remaining === 0) b.prop.state = 'gone';
+  }
+
+  _bondedGroup(b) {
+    if (!b.prop || b.attached) return [b];
+    const group = [b], seen = new Set(group);
+    for (let i=0;i<group.length;i++) for (const bond of group[i].bonds || []) {
+      const other = bond.a===group[i] ? bond.b : bond.a;
+      if (!bond.broken && !other.attached && !seen.has(other)) {seen.add(other);group.push(other);}
+    }
+    return group;
+  }
+
+  _joinBond(bond) {
+    const {a,b} = bond;
+    if (bond.broken || bond.joint || a.attached || b.attached || !a.body || !b.body) return;
+    const half = {x:(b.local.x-a.local.x)/2,y:(b.local.y-a.local.y)/2,z:(b.local.z-a.local.z)/2};
+    const opposite = {x:-half.x,y:-half.y,z:-half.z};
+    bond.joint = this.world.createImpulseJoint(RAPIER.JointData.fixed(half,IDENTITY,opposite,IDENTITY),a.body,b.body,false);
+    bond.joint.setContactsEnabled(false);
+  }
+
+  _breakBonds(b) {
+    for (const bond of b.bonds || []) {
+      if (bond.joint) {this.world.removeImpulseJoint(bond.joint,true);bond.joint=null;}
+      bond.broken = true;
+    }
+  }
+
+  _damage(b) {
+    this._breakBonds(b);
+    if (!b.attached) return;
+    const detached = b.structure.detach(b);
+    for (const block of detached) {
+      if (!block.body) this._createBody(block);
+      else block.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      block.body.wakeUp();
+      block.asleep = false;
+    }
+    for (const block of detached) for (const bond of block.bonds) this._joinBond(bond);
+  }
+
+  _handleImpacts() {
+    const damaged = new Set();
+    this.events.drainContactForceEvents(event => {
+      const a=this.colliderRecords.get(event.collider1()), b=this.colliderRecords.get(event.collider2());
+      if (event.totalForceMagnitude()<BREAK_FORCE || Math.max(a?.impactSpeed||0,b?.impactSpeed||0)<2) return;
+      if (a?.prop) damaged.add(a);
+      if (b?.prop) damaged.add(b);
+    });
+    for (const b of damaged) this._damage(b);
   }
 
   // Booster: tug everything within R toward the hole.
@@ -331,6 +413,7 @@ export class Rigid {
     for (const b of this.live) {
       const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
       if (d2 > R2 || d2 < 0.3) continue;
+      if (b.attached) this._damage(b);
       const d = Math.sqrt(d2);
       b.body.wakeUp(); b.asleep = false;
       b.body.applyImpulse({ x: (dx / d) * k, y: 0, z: (dz / d) * k }, true);
@@ -342,37 +425,49 @@ export class Rigid {
     if (Math.abs(r - this.pitR) > this.pitR * 0.05) this._setPit(r);
     this.pit.setTranslation({ x: hx, y: 0, z: hz });
 
-    // Sleeping bodies keep a cached position, so the per-frame cost is only
-    // the bodies that are actually moving plus a distance check each. Tiles
-    // get a body inside `live` of the hole and lose it again beyond `drop`
-    // (with slack so a tile on the boundary does not flicker); the wake ring
-    // is well inside that so a tumbling tile always has solid neighbours.
-    const wakeR2 = (r * 1.3 + 0.9) ** 2;
+    // Stream colliders ahead of the hole, without disturbing their supports.
+    // Wake only on a change of ground contact or a real collision.
+    const holeR2 = r * r * 0.98;
     const live = r * 2 + 7;
     const liveR2 = live * live, dropR2 = (live + 6) ** 2;
     this._visitDormant(hx, hz, live, b => {
       const dx = b.px - hx, dz = b.pz - hz;
       if (dx * dx + dz * dz < liveR2) this._materialize(b);
     });
+    const streamChecked = new Set();
     for (const b of this.live) {
-      if (!b.asleep) continue;
       const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
-      // Rapier wakes a sleeping tile itself when something moving touches
-      // it; track it from then on so its picture follows its body.
-      if (d2 < wakeR2 || !b.body.isSleeping()) { b.body.wakeUp(); b.asleep = false; }
-      else if (d2 > dropR2 && (b.prop || b.layer >= L_DISC)) this._dematerialize(b);
+      if (b.attached && b.foundation && d2 < holeR2) this._damage(b);
+      if (!b.attached) {
+        const over = d2 < holeR2 || b.body.translation().y < 0.05;
+        if (over !== b.offGround) {
+          b.offGround = over;
+          b.collider.setCollisionGroups(over ? G_OFF : G_ON);
+          b.body.wakeUp(); b.asleep = false;
+        } else if (!b.body.isSleeping()) b.asleep = false;
+      }
+      if (b.asleep && d2 > dropR2 && (b.prop || b.layer >= L_DISC) && !streamChecked.has(b)) {
+        this._dematerialize(b, hole, dropR2, streamChecked);
+      }
     }
     // Fractional frames accumulate instead of advancing physics twice as fast
     // on 120 Hz screens. Discard excess backlog after a stall.
     this.accumulator = Math.min(this.accumulator + dt, STEP * 3);
     while (this.accumulator + 1e-9 >= STEP) {
-      this.world.step();
+      for (const b of this.live) {
+        b.impactSpeed = 0;
+        if (!b.attached && !b.asleep) {
+          const v = b.body.linvel(); b.impactSpeed = Math.hypot(v.x,v.y,v.z);
+        }
+      }
+      this.world.step(this.events);
+      this._handleImpacts();
       this.accumulator = Math.max(0, this.accumulator - STEP);
     }
 
-    const holeR2 = r * r * 0.98;
     for (const b of this.live) {
       const L = b.layer, l = this.layers[L];
+      if (b.attached) continue;
       if (b.asleep && b.body.isSleeping()) continue;
       b.asleep = false;
       const t = b.body.translation();

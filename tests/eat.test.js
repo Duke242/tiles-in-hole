@@ -18,7 +18,7 @@ const scene=new THREE.Scene();
 const rigid=new Rigid(scene);
 const fields={cube:new Field(scene,40000),bead:new Field(scene,16000,{shape:'bead'})};
 test.afterEach(()=>rigid.reset());
-test.after(()=>rigid.world.free());
+test.after(()=>{rigid.events.free();rigid.world.free();});
 
 function blocks(positions) {
   const s=new Sculpt();
@@ -68,6 +68,7 @@ test('gravity drops an unsupported block progressively instead of sinking the wh
 test('unsupported blocks fall onto the board and remain collectible where they land',()=>{
   const {ctx,step,credited}=setup(blocks([[2,3,0]]),{r:1.2});
   const b=[...rigid.propVoxels][0];
+  rigid._damage(b); // A broken-off block has lost its structural attachment.
   step(120);
   assert.equal(credited(),0);
   assert.ok(b.body.translation().y>0.4 && b.body.translation().y<0.7);
@@ -114,6 +115,7 @@ test('all themed structure shapes register every block without exceeding debris 
 test('streaming a settled block preserves its pose and original voxel instance',()=>{
   const {ctx,step}=setup(blocks([[2,3,0]]),{r:1.2});
   const b=[...rigid.propVoxels][0];
+  rigid._damage(b);
   step(180);
   const p={...b.body.translation()},q={...b.body.rotation()};
   b.body.sleep(); b.asleep=true;
@@ -156,5 +158,84 @@ test('a full free-play board keeps distant structures dormant and retains every 
   for(const b of rigid.live){
     const t=b.body.translation();
     assert.ok(Number.isFinite(t.x+t.y+t.z));
+  }
+});
+
+test('approaching an overhang cannot wake or shake its intact structure',()=>{
+  const {ctx,step}=setup(blocks([[4,0,0],[4,1,0],[4,2,0],[3,2,0],[2,2,0]]),{r:1});
+  const original=[...rigid.propVoxels].map(b=>({b,x:b.x,y:b.y,z:b.z}));
+  for(const x of [-15,0,1,1.8,2]){ctx.hole.state.x=x;step(120);}
+  for(const p of original){
+    assert.equal(p.b.attached,true);
+    assert.equal(p.b.body.isFixed(),true);
+    assert.deepEqual({...p.b.body.translation()},{x:p.x,y:p.y,z:p.z});
+  }
+});
+
+test('only the unsupported section detaches and its intact bonds become joints',()=>{
+  const {ctx}=setup(blocks([[0,0,0],[0,1,0],[0,2,0],[1,2,0],[5,0,0]]));
+  rigid.update(0,ctx.hole.state);
+  const survivors=[...rigid.propVoxels];
+  const grounded=survivors.find(b=>b.local.x===5);
+  assert.equal(grounded.attached,true);
+  const upper=survivors.find(b=>b.local.y===1);
+  const branch=survivors.find(b=>b.local.x===1);
+  assert.equal(upper.attached,false);
+  assert.equal(branch.attached,false);
+  assert.ok([...upper.bonds].some(b=>b.joint?.isValid()));
+  assert.ok([...branch.bonds].some(b=>b.joint?.isValid()));
+});
+
+test('a strong physical impact breaks structural connections',()=>{
+  const {ctx,step}=setup(blocks([[4,0,0],[4,1,0],[5,1,0]]));
+  rigid.update(0,ctx.hole.state);
+  const victim=[...rigid.propVoxels].find(b=>b.local.x===4 && b.local.y===1);
+  const projectile=rigid.spawnTile(1,1.5,0,3,0);
+  rigid._materialize(projectile);
+  projectile.body.setLinvel({x:12,y:0,z:0},true);projectile.asleep=false;
+  step(30);
+  assert.equal(victim.attached,false);
+  assert.ok([...victim.bonds].some(b=>b.broken));
+});
+
+test('jointed debris streams out and back without losing or recreating broken bonds',()=>{
+  const {ctx}=setup(blocks([[0,0,0],[0,1,0],[0,2,0],[1,2,0]]));
+  rigid.update(0,ctx.hole.state);
+  const upper=[...rigid.propVoxels].find(b=>b.local.y===1);
+  const group=rigid._bondedGroup(upper);
+  const bonds=new Set(group.flatMap(b=>[...b.bonds]));
+  const intact=[...bonds].filter(b=>!b.broken);
+  for(const b of group){b.body.sleep();b.asleep=true;}
+  rigid._dematerialize(upper);
+  for(const b of group) assert.equal(b.body,null);
+  for(const bond of intact) assert.equal(bond.joint,null);
+  rigid._materialize(upper);
+  for(const bond of intact) assert.ok(bond.joint?.isValid());
+  for(const bond of bonds) if(bond.broken) assert.equal(bond.joint,null);
+  for(const b of group) assert.equal(b.body.isSleeping(),true);
+});
+
+test('sparse decorative details are connected to supports and release with them',()=>{
+  const {ctx,step}=setup(blocks([[4,0,0],[4,1,0],[6,3,0]]));
+  const detail=[...rigid.propVoxels].find(b=>b.local.x===6);
+  step(180);
+  assert.equal(detail.attached,true);
+  assert.equal(detail.bonds.size,1);
+  ctx.hole.state.x=4;
+  rigid.update(0,ctx.hole.state);
+  assert.equal(detail.attached,false);
+  assert.ok([...detail.bonds].some(b=>b.joint?.isValid()));
+});
+
+test('gentle contact does not break a supported structure',()=>{
+  const {ctx,step}=setup(blocks([[4,0,0],[4,1,0],[5,1,0]]));
+  rigid.update(0,ctx.hole.state);
+  const projectile=rigid.spawnTile(3.05,0.42,0,3,0);
+  rigid._materialize(projectile);
+  projectile.body.setLinvel({x:0.25,y:0,z:0},true);projectile.asleep=false;
+  step(120);
+  for(const b of rigid.propVoxels){
+    assert.equal(b.attached,true);
+    assert.ok([...b.bonds].every(bond=>!bond.broken));
   }
 });

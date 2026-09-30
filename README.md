@@ -98,9 +98,14 @@ an instance, no body) and get a body only inside a ring around the hole, which
 is what lets the free-play board hold thousands of tiles. The hole is a
 heightfield patch punched into the ground collider that follows the hole and
 grows with it, which is what makes a tile hanging over the rim tip in. Voxel
-props use the same streamed Rapier physics: each block has its own collider,
-gravity, friction, and contact with its neighbours. Their original instanced
-voxel artwork stays in place; only moving blocks update their transforms.
+props have structural bonds that carry support from the lowest course to
+overhangs and decorative details. Intact, supported sections stay fixed when
+approached. Removing a foundation block or delivering a strong impact breaks
+connections and releases unsupported sections into Rapier. Detached sections
+retain breakable fixed joints, gravity, friction, and collision contact; broken
+bonds stay broken when debris streams out and back in. This is a game support
+model rather than a material-stress simulation. Their original instanced voxel
+artwork stays in place; only moving blocks update their transforms.
 There is no whole-structure sinking, pulling, or automatic credit for blocks
 that have not fallen into the pit.
 

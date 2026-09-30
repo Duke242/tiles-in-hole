@@ -12,7 +12,7 @@ await Rigid.init();
 const rigid = new Rigid(new THREE.Scene());
 const hole = { x: 0, z: 0, r: 1 };
 test.afterEach(() => rigid.reset());
-test.after(() => rigid.world.free());
+test.after(() => { rigid.events.free(); rigid.world.free(); });
 
 function clearUploads() {
   for (const l of rigid.layers) {
@@ -163,4 +163,19 @@ test('batched upload ranges retain every edited matrix until rendering', () => {
   const ranges=l.mesh.instanceMatrix.updateRanges;
   assert.ok(ranges.length<=64);
   for (let i=0;i<100;i++) assert.ok(ranges.some(r=>r.start<=i*16 && r.start+r.count>=(i+1)*16));
+});
+
+test('settled tiles are not repeatedly awakened merely by being nearby',()=>{
+  const b=rigid.spawnTile(1.6,0.42,0,L_DICE,0);
+  rigid.update(0,hole);
+  let wakes=0;
+  const wake=b.body.wakeUp.bind(b.body);
+  b.body.wakeUp=()=>{wakes++;wake();};
+  for(let i=0;i<300;i++) rigid.update(1/60,hole);
+  assert.equal(b.body.isSleeping(),true);
+  assert.equal(wakes,0);
+  const settled={...b.body.translation()};
+  for(let i=0;i<120;i++) rigid.update(1/60,hole);
+  assert.deepEqual({...b.body.translation()},settled);
+  assert.ok(Math.abs(settled.x-1.6)<0.02,JSON.stringify(settled));
 });

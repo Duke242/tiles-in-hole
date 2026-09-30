@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BEAD } from './voxel.js';
+import { Structure } from '../game/structure.js';
 
 // Both picture tiles and structure blocks have streamed rigid bodies.
 // Structure blocks keep the original voxel fields for their appearance.
@@ -26,10 +27,12 @@ export function buildWorld(level, fields, rigid) {
     writeObject(o, fields, o.x, 0, o.z, _q);
     o.remaining = o.model.count;
     if (!o.model.bomb) {
+      const blocks = [];
       for (const v of o.model.vox) {
         const field = v.fi ? fields.bead : fields.cube;
-        rigid.spawnPropVoxel(o, v, field, o.refs[v.fi], _q);
+        blocks.push(rigid.spawnPropVoxel(o, v, field, o.refs[v.fi], _q));
       }
+      o.structure = new Structure(blocks);
     }
   }
   fields.cube.flush();
