@@ -26,11 +26,18 @@ const PIT_N = 56;
 const CELL_SIZE = 12;
 const STEP = 1 / 60;
 const BREAK_FORCE = 100;
+// A collapse this many blocks big drops the part over the pit without bodies:
+// thousands of jointed blocks falling at once would stall the solver, and
+// over the void there is nothing for them to hit.
+const MASS_COLLAPSE = 120;
+const GRAVITY = 30;
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 const _o = new THREE.Object3D();
 const _c = new THREE.Color();
 const _q = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
+const _v = new THREE.Vector3();
+const _qq = new THREE.Quaternion();
 
 // Preserve the same instance data, but upload only slots that changed.
 function dirtyRange(attr, start, count) {
@@ -54,10 +61,12 @@ export class Rigid {
     this.dormant = new Map();
     this.live = new Set();
     this.propVoxels = new Set();
+    this.falling = new Set();
+    this.hole = null;
     this.colliderRecords = new Map();
     this.events = new RAPIER.EventQueue(true);
     this.accumulator = 0;
-    this.world = new RAPIER.World({ x: 0, y: -30, z: 0 });
+    this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     this.world.timestep = 1 / 60;
 
     const g = RAPIER.ColliderDesc.cuboid(1200, 1, 1200).setTranslation(0, -1, 0).setFriction(0.8).setRestitution(0.02);
@@ -111,6 +120,7 @@ export class Rigid {
     for (const b of this.live) this.world.removeRigidBody(b.body);
     this.dormant.clear(); this.live.clear(); this.accumulator = 0;
     this.propVoxels.clear();
+    this.falling.clear();
     this.colliderRecords.clear(); this.events.clear();
     for (const l of this.layers) {
       l.bodies.length = 0;
@@ -346,7 +356,7 @@ export class Rigid {
     b.structure?.blocks.delete(b);
     if (b.collider) this.colliderRecords.delete(b.collider.handle);
     if (b.body) this.world.removeRigidBody(b.body);
-    this.live.delete(b); this._forgetDormant(b); this.propVoxels.delete(b);
+    this.live.delete(b); this._forgetDormant(b); this.propVoxels.delete(b); this.falling.delete(b);
     b.field.hidePart(b.ref, b.part);
     b.prop.remaining--;
     if (b.prop.remaining === 0) b.prop.state = 'gone';
@@ -378,17 +388,85 @@ export class Rigid {
     }
   }
 
-  _damage(b) {
-    this._breakBonds(b);
-    if (!b.attached) return;
-    const detached = b.structure.detach(b);
+  _damage(b) { this._damageMany([b]); }
+
+  // Sever every damaged block, then settle support once per structure.
+  _damageMany(list) {
+    const byStructure = new Map();
+    for (const b of list) {
+      this._breakBonds(b);
+      if (!b.attached) continue;
+      if (!byStructure.has(b.structure)) byStructure.set(b.structure, []);
+      byStructure.get(b.structure).push(b);
+    }
+    const detached = [];
+    for (const [structure, damaged] of byStructure) for (const b of structure.detach(damaged)) detached.push(b);
+    if (!detached.length) return;
+    const h = this.hole, r2 = h ? h.r * h.r * 0.98 : 0;
+    const dynamic = [];
     for (const block of detached) {
+      if (h && detached.length >= MASS_COLLAPSE && (block.px - h.x) ** 2 + (block.pz - h.z) ** 2 < r2) {
+        this._fall(block);
+        continue;
+      }
       if (!block.body) this._createBody(block);
       else block.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       block.body.wakeUp();
       block.asleep = false;
+      dynamic.push(block);
     }
-    for (const block of detached) for (const bond of block.bonds) this._joinBond(bond);
+    for (const block of dynamic) for (const bond of block.bonds) this._joinBond(bond);
+    if (!h) return;
+    for (const block of dynamic) {
+      const over = (block.px - h.x) ** 2 + (block.pz - h.z) ** 2 < r2;
+      if (over !== block.offGround) {
+        block.offGround = over;
+        block.collider.setCollisionGroups(over ? G_OFF : G_ON);
+      }
+    }
+  }
+
+  // A block over the pit in a mass collapse: plain free fall, no body.
+  _fall(b) {
+    this._breakBonds(b);
+    if (b.body) {
+      const t = b.body.translation(), q = b.body.rotation();
+      b.x = t.x; b.y = t.y; b.z = t.z;
+      b.qx = q.x; b.qy = q.y; b.qz = q.z; b.qw = q.w;
+      b.vy = b.body.linvel().y;
+      this.colliderRecords.delete(b.collider.handle);
+      this.world.removeRigidBody(b.body);
+      b.body = null; b.collider = null;
+      this.live.delete(b);
+    } else {
+      this._forgetDormant(b);
+      b.vy = 0;
+    }
+    b.vy -= Math.random() * 1.5;
+    this.falling.add(b);
+  }
+
+  _updateFalling(dt, hx, hz, holeR2) {
+    for (const b of this.falling) {
+      b.vy -= GRAVITY * dt;
+      b.y += b.vy * dt;
+      if (b.y < this.deep) {
+        if (this.onConsumed) this.onConsumed(b.key, b.layer, b.x, b.z);
+        this._removePropVoxel(b);
+        continue;
+      }
+      // The hole slid out from under it before it got below the board.
+      if (b.y > -0.5 && (b.x - hx) ** 2 + (b.z - hz) ** 2 >= holeR2) {
+        this.falling.delete(b);
+        this._createBody(b);
+        b.body.setLinvel({ x: 0, y: b.vy, z: 0 }, true);
+        b.asleep = false;
+        continue;
+      }
+      _v.set(b.x, b.y, b.z);
+      _qq.set(b.qx, b.qy, b.qz, b.qw);
+      b.field.writePart(b.ref, b.part, _v, _qq);
+    }
   }
 
   _handleImpacts() {
@@ -399,21 +477,29 @@ export class Rigid {
       if (a?.prop) damaged.add(a);
       if (b?.prop) damaged.add(b);
     });
-    for (const b of damaged) this._damage(b);
+    if (damaged.size) this._damageMany([...damaged]);
   }
 
   // Booster: tug everything within R toward the hole.
   magnet(hole, R, k) {
     const { x: hx, z: hz } = hole;
     const R2 = R * R;
+    // It tears blocks off a structure only near the rim, so it cannot rip a
+    // whole skyline loose at once; loose things come from the full range.
+    const tear2 = (hole.r + 4) ** 2;
     this._visitDormant(hx, hz, R, b => {
-      const dx = hx - b.px, dz = hz - b.pz;
-      if (dx * dx + dz * dz <= R2) this._materialize(b);
+      const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
+      if (d2 <= (b.attached ? tear2 : R2)) this._materialize(b);
     });
+    const torn = [];
     for (const b of this.live) {
       const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
-      if (d2 > R2 || d2 < 0.3) continue;
-      if (b.attached) this._damage(b);
+      if (b.attached && d2 <= tear2) torn.push(b);
+    }
+    if (torn.length) this._damageMany(torn);
+    for (const b of this.live) {
+      const dx = hx - b.px, dz = hz - b.pz, d2 = dx * dx + dz * dz;
+      if (d2 > R2 || d2 < 0.3 || b.attached) continue;
       const d = Math.sqrt(d2);
       b.body.wakeUp(); b.asleep = false;
       b.body.applyImpulse({ x: (dx / d) * k, y: 0, z: (dz / d) * k }, true);
@@ -422,6 +508,7 @@ export class Rigid {
 
   update(dt, hole) {
     const { x: hx, z: hz, r } = hole;
+    this.hole = hole;
     if (Math.abs(r - this.pitR) > this.pitR * 0.05) this._setPit(r);
     this.pit.setTranslation({ x: hx, y: 0, z: hz });
 
@@ -430,14 +517,22 @@ export class Rigid {
     const holeR2 = r * r * 0.98;
     const live = r * 2 + 7;
     const liveR2 = live * live, dropR2 = (live + 6) ** 2;
+    // Intact structure blocks only need a body where something can touch
+    // them: near the rim and low enough for tiles and rubble to reach.
+    const fixedR = r + 4, fixedR2 = fixedR * fixedR, fixedDropR2 = (fixedR + 6) ** 2, fixedTop = r + 6;
     this._visitDormant(hx, hz, live, b => {
-      const dx = b.px - hx, dz = b.pz - hz;
-      if (dx * dx + dz * dz < liveR2) this._materialize(b);
+      const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
+      if (b.attached ? d2 < fixedR2 && b.y < fixedTop : d2 < liveR2) this._materialize(b);
     });
+    const undermined = [];
+    for (const b of this.live) {
+      const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
+      if (b.attached && b.foundation && d2 < holeR2) undermined.push(b);
+    }
+    if (undermined.length) this._damageMany(undermined);
     const streamChecked = new Set();
     for (const b of this.live) {
       const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
-      if (b.attached && b.foundation && d2 < holeR2) this._damage(b);
       if (!b.attached) {
         const over = d2 < holeR2 || b.body.translation().y < 0.05;
         if (over !== b.offGround) {
@@ -446,10 +541,12 @@ export class Rigid {
           b.body.wakeUp(); b.asleep = false;
         } else if (!b.body.isSleeping()) b.asleep = false;
       }
-      if (b.asleep && d2 > dropR2 && (b.prop || b.layer >= L_DISC) && !streamChecked.has(b)) {
-        this._dematerialize(b, hole, dropR2, streamChecked);
+      const drop = b.attached ? fixedDropR2 : dropR2;
+      if (b.asleep && d2 > drop && (b.prop || b.layer >= L_DISC) && !streamChecked.has(b)) {
+        this._dematerialize(b, hole, drop, streamChecked);
       }
     }
+    if (this.falling.size) this._updateFalling(dt, hx, hz, holeR2);
     // Fractional frames accumulate instead of advancing physics twice as fast
     // on 120 Hz screens. Discard excess backlog after a stall.
     this.accumulator = Math.min(this.accumulator + dt, STEP * 3);

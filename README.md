@@ -6,9 +6,9 @@ Pick a way to play on the title screen:
 - **Levels.** The campaign. Each level is a themed voxel world with a goal
   card and a clock: drag the hole under the right tiles, watch the stacks
   topple and pour in, and fill the card before time runs out.
-- **Free Play.** One huge board, no clock, no card. Start small in the
-  middle, eat outward, grow, and swallow everything down to the landmarks.
-  The board is bare when the counter hits zero.
+- **Free Play.** Huge boards, no clock, no card. Pick a map, start small in
+  the middle, eat outward, grow, and swallow everything down to the giant
+  set pieces. The board is bare when the counter hits zero.
 
 **Play:** https://duke242.github.io/tiles-in-hole/
 
@@ -40,6 +40,25 @@ Pick a way to play on the title screen:
 
 ### Free Play
 
+Free Play opens a map picker:
+
+| Map | World | Giants |
+| --- | --- | --- |
+| Classic | a different one each run | none: the original 220×220 board |
+| Megacity | City | skyscrapers (setback, round and twin towers up to ~65 high), a stadium, radio masts |
+| Giant's Orchard | Fruit Garden | pineapples taller than houses, watermelon slices, strawberries, banana bunches, fruit bowls |
+| Mega Park | Fun Park | a 45-high ferris wheel, roller coasters, big-top tents, fairy castles, drop towers |
+| Food Colossus | Food Street | house-sized burgers, tiered cakes, donuts, soft-serve cones, soda cups |
+| Water World | Water Park | slide towers, lighthouses, giant palms, pirate ships, rubber ducks |
+
+The giant maps are 320×320 with about 8,000 tiles, ordinary props in the
+middle and 10-17 giants ringing the outside, biggest furthest out. The hole
+can grow to about 22 units across there. A giant is far wider than the hole,
+so it is not swallowed whole: eat out its footprint and it comes down in
+sections, the part over the pit dropping straight in.
+
+Classic:
+
 - A 220×220 board with about 6,000 tiles and up to ~90 voxel props from one
   world (the worlds take turns, one per run). Stacks are low in the middle
   and tall at the edges; props are laid out by their footprint, the
@@ -52,8 +71,8 @@ Pick a way to play on the title screen:
   are still standing. Eating everything shows *Map cleared* with your time.
 - Hole Boost and Magnet are free here but recharge after use (the badge
   shows the countdown). +30s is hidden.
-- Leaving early still banks the run: 1 coin per 20 tiles, and your best
-  count shows on the title screen.
+- Leaving early still banks the run: 1 coin per 20 tiles. Your best count
+  shows on the title screen, and each map's best on its picker button.
 
 ## Controls
 
@@ -66,9 +85,11 @@ Pick a way to play on the title screen:
 | `R` | Restart the level |
 
 Dev shortcuts: `?level=N` starts at level N, `?r=6` starts with a bigger hole;
-for Free Play `?size=`, `?tiles=`, `?props=` and `?seed=` give a small or
-repeatable board (e.g. `?mode=free&size=60&tiles=300&props=0` for the
-auto-player in `tools/`).
+for Free Play `?map=<id>` skips the picker (`classic`, `megacity`, `orchard`,
+`megapark`, `feast`, `waterworld`), and `?size=`, `?tiles=`, `?props=` and
+`?seed=` give a small or repeatable board (e.g.
+`?mode=free&map=classic&size=60&tiles=300&props=0` for the auto-player in
+`tools/`).
 
 ## Running it
 
@@ -83,8 +104,8 @@ npm run build    # → dist/
 ```
 src/
   core/     renderer + sky + lights, thumbstick input, procedural audio, save, seeded RNG
-  world/    picture tiles (icon atlas, geometries, materials), voxel sculpting for props,
-            themes/palettes, instanced voxel pools, the board ground
+  world/    picture tiles (icon atlas, geometries, materials), voxel sculpting for props
+            and the giant set pieces, themes/palettes, instanced voxel pools, the board ground
   levels/   the level generator (layout, growth curve, goal card, clock) and the free-play board
   game/     the hole, streamed block and tile physics + the pit (Rapier), hazards, debris, progress
   ui/       HUD and overlays
@@ -101,7 +122,14 @@ grows with it, which is what makes a tile hanging over the rim tip in. Voxel
 props have structural bonds that carry support from the lowest course to
 overhangs and decorative details. Intact, supported sections stay fixed when
 approached. Removing a foundation block or delivering a strong impact breaks
-connections and releases unsupported sections into Rapier. Detached sections
+connections and releases unsupported sections into Rapier. Support has a
+reach: a block falls once its shortest support path is more than a few blocks
+longer than it was as built, so a designed overhang holds but a skyscraper
+with a wide bite out of its base drops the columns over the gap. A collapse
+of more than ~120 blocks drops the part that is over the pit without bodies
+(plain free fall), so a giant coming down does not stall the solver. Intact
+blocks only get a (fixed) body near the rim and below the hole's reach in
+height. Detached sections
 retain breakable fixed joints, gravity, friction, and collision contact; broken
 bonds stay broken when debris streams out and back in. This is a game support
 model rather than a material-stress simulation. Their original instanced voxel

@@ -1,5 +1,6 @@
 import { Sculpt, CUBE, BEAD } from './voxel.js';
 import { hash3 } from '../core/rng.js';
+import { GIANTS } from './giants.js';
 
 // The structure library. Every sculpt paints into a fresh Sculpt centred on
 // the origin with its base on layer 0, using colours from the theme palette P
@@ -431,6 +432,8 @@ export const SCULPTS = {
     return {};
   },
 };
+
+Object.assign(SCULPTS, GIANTS);
 
 export function buildSculpt(kind, rng, P) {
   const S = new Sculpt();
