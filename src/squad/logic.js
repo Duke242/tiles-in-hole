@@ -1,11 +1,11 @@
 // Pure rules for Squad Rush: gate maths, squad formation, enemy and boss
 // stats, and the Free mode difficulty curve. No Three.js or DOM in here, so
 // tests (and the headless balance runs) can use it directly.
-import { makeRng } from '../core/rng.js';
-
 export const LANE_HALF = 4;          // the road runs x in [-4, 4]
 export const RUN_SPEED = 7;          // squad forward speed, units/s
 export const MAX_SQUAD = 150;
+export const MAX_ZOMBIES = 600;     // the renderer draws this many, so the sim stops here
+export const MAX_BULLETS = 700;
 export const FIRE_RATE = 2.5;        // shots per soldier per second
 export const BULLET_SPEED = 42;
 export const BULLET_RANGE = 24;
@@ -176,5 +176,3 @@ function freeGatePair(rng, diff, count, first) {
   else { a = bad(); b = bad(); }
   return rng.chance(0.5) ? { left: a, right: b } : { left: b, right: a };
 }
-
-export function freeRng(seed = Date.now()) { return makeRng(seed); }

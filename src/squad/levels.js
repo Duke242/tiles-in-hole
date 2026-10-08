@@ -148,7 +148,3 @@ export const LEVELS = [
     B(290, 6),
   ] },
 ];
-
-export function levelLength(level) {
-  return level.events[level.events.length - 1].d;
-}

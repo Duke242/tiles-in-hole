@@ -4,26 +4,28 @@
 // simulation; it only reads it and reacts to its fx events.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { LANE_HALF, BULLET_SPEED, MAX_SQUAD, gateLabel, isGoodGate, squadRadius } from './logic.js';
+import { LANE_HALF, BULLET_SPEED, MAX_SQUAD, MAX_ZOMBIES, MAX_BULLETS, gateLabel, isGoodGate, squadRadius } from './logic.js';
 
 const SKY = 0xb9cbd6;
-const MAX_ZOMBIES = 600;
-const MAX_BULLETS = 700;
 const MAX_BITS = 700;
 const ROAD_LEN = 240;
 
 // ---------- low-poly model kit ----------
 
+// Give every vertex of g one colour (models use vertex colours so a whole
+// character is one geometry and one draw call).
+function paint(g, color) {
+  const c = new THREE.Color(color), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  return g;
+}
+
 function part(w, h, d, x, y, z, color, rx = 0) {
   const g = new THREE.BoxGeometry(w, h, d);
   if (rx) g.rotateX(rx);
   g.translate(x, y, z);
-  const c = new THREE.Color(color);
-  const n = g.attributes.position.count;
-  const col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return g;
+  return paint(g, color);
 }
 
 // Models face -z (forward, towards larger d).
@@ -82,13 +84,7 @@ function bossModel() {
 function treeGeometry() {
   const trunk = new THREE.CylinderGeometry(0.12, 0.16, 0.9, 6).translate(0, 0.45, 0);
   const crown = new THREE.ConeGeometry(0.75, 1.8, 7).translate(0, 1.6, 0);
-  const color = (g, c) => {
-    const col = new THREE.Color(c), n = g.attributes.position.count, a = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { a[i * 3] = col.r; a[i * 3 + 1] = col.g; a[i * 3 + 2] = col.b; }
-    g.setAttribute('color', new THREE.BufferAttribute(a, 3));
-    return g;
-  };
-  return mergeGeometries([color(trunk, 0x6b4a2f), color(crown, 0x3f6e3a)].map((g) => g.toNonIndexed()));
+  return mergeGeometries([paint(trunk, 0x6b4a2f), paint(crown, 0x3f6e3a)].map((g) => g.toNonIndexed()));
 }
 
 function carGeometry() {
@@ -115,10 +111,7 @@ function barrierGeometry() {
 function rockGeometry() {
   const g = new THREE.DodecahedronGeometry(0.5, 0);
   g.scale(1, 0.6, 1); g.translate(0, 0.2, 0);
-  const c = new THREE.Color(0x8b8f88), n = g.attributes.position.count, a = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
-  return g;
+  return paint(g, 0x8b8f88);
 }
 
 // ---------- textures ----------
@@ -278,10 +271,9 @@ export class Renderer {
   reset(sim) {
     for (const v of this.gateViews.values()) this.disposeGate(v);
     this.gateViews.clear();
-    for (const v of this.hazardViews.values()) { this.scene.remove(v); v.geometry.dispose(); v.material.dispose(); }
+    for (const m of this.hazardViews.values()) this.disposeHazard(m);
     this.hazardViews.clear();
-    if (this.bossView) this.scene.remove(this.bossView);
-    this.bossView = null;
+    this.disposeBoss();
     this.bitList = [];
     this.shake = 0;
     for (const p of this.deco) this.placeDeco(p, sim.squad.d - 10 + Math.random() * 110);
@@ -557,7 +549,7 @@ export class Renderer {
   drawBoss(sim, dt) {
     const b = sim.boss;
     if (!b) {
-      if (this.bossView) { this.scene.remove(this.bossView); this.bossView = null; }
+      this.disposeBoss();
       return;
     }
     if (!this.bossView) {
@@ -586,11 +578,23 @@ export class Renderer {
     }
     for (const [h, m] of this.hazardViews) {
       if (live.has(h)) continue;
-      this.scene.remove(m);
-      m.geometry.dispose(); m.material.dispose(); m.userData.fill.material.dispose();
-      m.userData.edge.geometry.dispose(); m.userData.edge.material.dispose();
+      this.disposeHazard(m);
       this.hazardViews.delete(h);
     }
+  }
+
+  disposeHazard(m) {
+    this.scene.remove(m);
+    m.geometry.dispose(); m.material.dispose(); m.userData.fill.material.dispose();
+    m.userData.edge.geometry.dispose(); m.userData.edge.material.dispose();
+  }
+
+  disposeBoss() {
+    if (!this.bossView) return;
+    this.scene.remove(this.bossView);
+    this.bossView.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    this.bossView.userData.mat.dispose();
+    this.bossView = null;
   }
 
   // World point to CSS pixels, for HUD labels.

@@ -7,7 +7,7 @@ import { Renderer } from './render.js';
 import { Sfx } from './sfx.js';
 import { loadSave, writeSave } from './save.js';
 import { LEVELS } from './levels.js';
-import { LANE_HALF, squadRadius, gateLabel } from './logic.js';
+import { LANE_HALF, squadRadius, steerLimit, gateLabel } from './logic.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -32,12 +32,12 @@ let drag = null;
 const canvas = $('c');
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock();
-  drag = { id: e.pointerId, x: e.clientX, target: steerTarget };
+  drag = { id: e.pointerId, x: e.clientX, target: clampSteer(steerTarget) };
   try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
   $('hint').classList.add('hidden');
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag || e.pointerId !== drag.id) return;
+  if (!drag || e.pointerId !== drag.id || paused) return;
   // Dragging across ~70% of the screen sweeps the whole road.
   const span = Math.min(innerWidth, 900) * 0.7;
   steerTarget = clampSteer(drag.target + (e.clientX - drag.x) / span * LANE_HALF * 2);
@@ -54,7 +54,12 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; if (run && !resultShown) setPaused(true); });
 
-function clampSteer(x) { return Math.max(-LANE_HALF, Math.min(LANE_HALF, x)); }
+// Clamp to how far the squad can actually go, so there is no dead zone to
+// drag back through after pushing past the edge with a big squad.
+function clampSteer(x) {
+  const lim = steerLimit(sim.count);
+  return Math.max(-lim, Math.min(lim, x));
+}
 
 function keyboardSteer(dt) {
   const dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
@@ -139,6 +144,7 @@ function restart() {
 
 function setPaused(p) {
   paused = p;
+  drag = null;
   $('pause').classList.toggle('hidden', !p);
 }
 

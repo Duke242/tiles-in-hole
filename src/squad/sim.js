@@ -6,7 +6,7 @@
 // distance along it. The squad runs towards larger d.
 import { makeRng } from '../core/rng.js';
 import {
-  LANE_HALF, RUN_SPEED, FIRE_RATE, BULLET_SPEED, BULLET_RANGE, BOSS_EVERY,
+  LANE_HALF, RUN_SPEED, MAX_ZOMBIES, MAX_BULLETS, FIRE_RATE, BULLET_SPEED, BULLET_RANGE, BOSS_EVERY,
   applyGate, shootGate, formationSlot, squadRadius, steerLimit, ZOMBIES,
   bossStats, freeBoss, freeDifficulty, freeChunk, inHazard,
 } from './logic.js';
@@ -14,7 +14,6 @@ import {
 const SPAWN_AHEAD = 70;   // events appear this far in front of the squad
 const WAKE_DIST = 26;     // zombies start shambling over when this close
 const CELL = 2;           // spatial hash cell size along d
-const MAX_BULLETS = 700;
 const STEER_SPEED = 14;
 
 export class Sim {
@@ -103,6 +102,9 @@ export class Sim {
     this.fire(dt);
     this.buildGrid();
     this.moveBullets(dt);
+    // A boss killed by this frame's bullets ends a level run right here, so
+    // nothing left on the road can bite after the win.
+    if (this.status !== 'running') return;
     this.moveZombies(dt);
     this.passGates();
     this.updateBoss(dt);
@@ -153,6 +155,7 @@ export class Sim {
   }
 
   addZombie(kind, x, d, hpMul = 1, awake = false) {
+    if (this.zombies.length >= MAX_ZOMBIES) return;
     const k = ZOMBIES[kind];
     const hp = Math.max(1, Math.round(k.hp * hpMul));
     this.zombies.push({
@@ -434,10 +437,16 @@ export class Sim {
     for (const h of this.hazards) {
       h.t += dt;
       if (h.t < h.delay) { keep.push(h); continue; }
-      const victims = this.squad.soldiers.filter((s) => inHazard(h, s.x, s.d));
-      for (const v of victims) this.killSoldiersNear(1, v.x, v.d);
+      const alive = [];
+      let killed = 0;
+      for (const s of this.squad.soldiers) {
+        if (!inHazard(h, s.x, s.d)) { alive.push(s); continue; }
+        killed++;
+        this.fx.push({ type: 'soldierDown', x: s.x, d: s.d });
+      }
+      this.squad.soldiers = alive;
       if (h.kind === 'charge' && this.boss) this.boss.lunge = 0.45;
-      this.fx.push({ type: 'boom', hazard: h, killed: victims.length });
+      this.fx.push({ type: 'boom', hazard: h, killed });
     }
     this.hazards = keep;
   }
@@ -449,7 +458,7 @@ export class Sim {
     this.hazards = [];
     this.boss = null;
     this.fighting = false;
-    for (const z of this.zombies) if (z.d > this.squad.d) { z.hp = 0; this.fx.push({ type: 'zombieDown', x: z.x, d: z.d, kind: z.kind, scale: z.scale }); }
+    for (const z of this.zombies) { z.hp = 0; this.fx.push({ type: 'zombieDown', x: z.x, d: z.d, kind: z.kind, scale: z.scale }); }
     if (this.mode === 'level') {
       this.status = 'won';
       this.fx.push({ type: 'won' });
