@@ -10,6 +10,11 @@ import { patternPoints, DISC_PITCH, DICE_PITCH, HOLE_START } from './generate.js
 // edges are where the big columns are, and voxel props of every size (the
 // landmarks too) are scattered by how much hole it takes to eat them. It
 // ends when the board is bare.
+//
+// Classic is that board in a different world each run. The other maps are
+// bigger boards built round giant set pieces (world/giants.js): a skyline,
+// a ferris wheel you see from the start, a burger the size of a house. They
+// ring the outside, biggest furthest out, and the hole can grow to match.
 
 export const FREE_SIZE = 220;
 export const FREE_TILES = 6000;
@@ -18,7 +23,25 @@ export const FREE_PROPS = 96;
 const TAU = Math.PI * 2;
 const NOT_PROPS = new Set(['stack', 'slab', 'pile', 'bomb']);
 
-export function generateFreeMap({ seed, theme, size = FREE_SIZE, tiles: T = FREE_TILES, props: nProps = FREE_PROPS, voxCap = 40000, beadCap = 16000 }) {
+const BIG = { size: 320, tiles: 8000, props: 70, holeMax: 22 };
+export const FREE_MAPS = [
+  { id: 'classic', name: 'Classic', blurb: 'A different world every run' },
+  { id: 'megacity', name: 'Megacity', world: 'city', blurb: 'Skyscrapers, a stadium and radio masts', ...BIG,
+    giants: [['skyscraper', 14], ['stadium', 1], ['radioTower', 2]] },
+  { id: 'orchard', name: "Giant's Orchard", world: 'fruit', blurb: 'Pineapples taller than houses', ...BIG,
+    giants: [['giantPineapple', 3], ['giantWatermelon', 3], ['giantStrawberry', 4], ['fruitBowl', 2], ['giantBananas', 3]] },
+  { id: 'megapark', name: 'Mega Park', world: 'park', blurb: 'A huge ferris wheel, coasters and a castle', ...BIG,
+    giants: [['megaFerris', 1], ['rollerCoaster', 3], ['bigTop', 3], ['fairyCastle', 2], ['giantDropTower', 3]] },
+  { id: 'feast', name: 'Food Colossus', world: 'food', blurb: 'House-sized burgers, cakes and donuts', ...BIG,
+    giants: [['megaBurger', 2], ['towerCake', 2], ['giantDonut', 3], ['softServe', 3], ['sodaCup', 3]] },
+  { id: 'waterworld', name: 'Water World', world: 'water', blurb: 'Slide towers, lighthouses and a pirate ship', ...BIG,
+    giants: [['slideTower', 2], ['lighthouse', 2], ['giantPalm', 6], ['pirateShip', 2], ['rubberDuck', 3]] },
+];
+
+export function generateFreeMap({
+  seed, theme, size = FREE_SIZE, tiles: T = FREE_TILES, props: nProps = FREE_PROPS,
+  holeMax = FREE_HOLE_MAX, giants = [], voxCap = 40000, beadCap = 16000, map = 'classic',
+}) {
   const rng = makeRng(seed);
   const w = size, d = size, half = size / 2;
   const reach = Math.hypot(half, half);
@@ -54,14 +77,34 @@ export function generateFreeMap({ seed, theme, size = FREE_SIZE, tiles: T = FREE
     return null;
   }
 
+  // --- giants -----------------------------------------------------------------
+  // Set pieces go down before anything else, smallest nearest the middle,
+  // the rest spread out to the rim. They keep a fifth of the voxel budget
+  // back for the ordinary props.
+  const props = [];
+  let cubes = 0, beads = 0;
+  const big = [];
+  for (const [kind, n] of giants) for (let i = 0; i < n; i++) big.push(buildSculpt(kind, rng, theme.P));
+  big.sort((a, b) => a.radius - b.radius);
+  for (let i = 0; i < big.length; i++) {
+    const model = big[i];
+    const nb = model.vox.reduce((n, v) => n + (v.s === BEAD ? 1 : 0), 0), nc = model.count - nb;
+    if (cubes + nc > voxCap * 0.8 || beads + nb > beadCap * 0.8) continue;
+    const t = big.length > 1 ? i / (big.length - 1) : 0;
+    const dMin = Math.min(half * 0.85, 45 + t * half * 0.45) + model.radius * 0.3;
+    const at = place(model.radius + 2, dMin, reach, 80);
+    if (!at) continue;
+    cubes += nc; beads += nb;
+    props.push({ x: at[0], z: at[1], yaw: rng.i(0, 3) * Math.PI / 2, model, need: model.radius });
+  }
+
   // --- props ------------------------------------------------------------------
   // A spread of every prop the theme has, sorted by how big a hole they need;
   // the small ones go near the middle and the big ones out where the hole
   // will be big by the time it gets there. They go down first so the big
   // ones find room; the pool budget keeps the instance fields safe.
-  const props = [];
   const kindsAvail = theme.spawn.map((s) => s[0]).filter((k) => !NOT_PROPS.has(k));
-  const rMax = FREE_HOLE_MAX - 0.6;
+  const rMax = holeMax - 0.6;
   const cand = [];
   for (let i = 0; i < nProps && kindsAvail.length; i++) {
     const model = buildSculpt(kindsAvail[i % kindsAvail.length], rng, theme.P);
@@ -71,14 +114,13 @@ export function generateFreeMap({ seed, theme, size = FREE_SIZE, tiles: T = FREE
     cand.push({ model, need });
   }
   cand.sort((a, b) => a.need - b.need);
-  let cubes = 0, beads = 0;
   for (let i = 0; i < cand.length; i++) {
     const { model, need } = cand[i];
     const nb = model.vox.reduce((n, v) => n + (v.s === BEAD ? 1 : 0), 0), nc = model.count - nb;
     if (cubes + nc > voxCap * 0.9 || beads + nb > beadCap * 0.9) continue;
     const t = cand.length > 1 ? i / (cand.length - 1) : 0;
-    const dMin = 12 + t * 70;
-    const at = place(model.radius + 0.6, dMin, Math.min(reach, dMin + 60));
+    const k = size / FREE_SIZE, dMin = (12 + t * 70) * k;
+    const at = place(model.radius + 0.6, dMin, Math.min(reach, dMin + 60 * k));
     if (!at) continue;
     cubes += nc; beads += nb;
     props.push({ x: at[0], z: at[1], yaw: rng.i(0, 3) * Math.PI / 2, model, need });
@@ -119,14 +161,15 @@ export function generateFreeMap({ seed, theme, size = FREE_SIZE, tiles: T = FREE
   }
 
   // Cakes: tall wide single tiles, one item each, away from the start.
-  for (let i = 0; i < 40; i++) {
+  const nCakes = Math.round(40 * (size / FREE_SIZE) ** 2);
+  for (let i = 0; i < nCakes; i++) {
     const at = place(1.2, 22);
     if (!at) break;
     tiles.push({ x: at[0], y: DISC_H * 3 / 2, z: at[1], kind: L_DISC, type: rng.pick(allTypes), yaw: rng.r(0, TAU), scale: 1.7, tall: 3 });
   }
 
   return {
-    n: 0, free: true, seed, theme, board: { w, d }, tiles, props, goals: [], time: 0,
-    holeStart: HOLE_START, holeMax: FREE_HOLE_MAX, totalTiles: tiles.length,
+    n: 0, free: true, map, seed, theme, board: { w, d }, tiles, props, goals: [], time: 0,
+    holeStart: HOLE_START, holeMax, totalTiles: tiles.length,
   };
 }

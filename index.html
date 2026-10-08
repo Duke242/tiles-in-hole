@@ -117,6 +117,13 @@
   .btn.mode .big{display:block;font-size:22px}
   .btn.mode .small{display:block;font-size:12.5px;font-weight:800;opacity:.92;text-shadow:none;margin-top:3px;letter-spacing:.2px}
   .btn:disabled{opacity:.55;cursor:default;transform:none}
+  #mapList{max-height:min(62vh,520px);overflow-y:auto;margin:0 -6px;padding:0 6px 6px}
+  #mapList .btn{margin-top:9px;text-align:left;position:relative}
+  #mapList .btn .big{font-size:20px}
+  #mapList .tag{position:absolute;right:12px;top:10px;font-size:11px;font-weight:900;letter-spacing:.6px;
+    background:#fff3c4;color:#b6580c;border-radius:999px;padding:2px 8px;text-shadow:none}
+  .btn.blue{background:linear-gradient(#7fd1ff,#2f6fe8);box-shadow:0 5px 0 #17468f;text-shadow:0 2px 0 #17468f}
+  .btn.blue:active{box-shadow:0 2px 0 #17468f}
   .loading{font-size:12px;color:#cdbff5;font-weight:700;margin-top:10px}
   .loading.hidden{display:none}
   .logo{display:flex;flex-direction:column;align-items:center;gap:2px;margin:4px 0 14px}
@@ -179,6 +186,15 @@
     <button id="freeBtn" class="btn mode orange" type="button" disabled><span class="big">Free Play</span><span class="small" id="menuFree">One huge map · no clock, no card</span></button>
     <div id="menuLoading" class="loading">Loading physics…</div>
     <div class="keys">Drag anywhere, like a thumbstick · <kbd>WASD</kbd> works too<br>Scroll to zoom · <kbd>R</kbd> restarts</div>
+  </div>
+</div>
+
+<div id="maps" class="overlay hidden">
+  <div class="card">
+    <h1>FREE PLAY</h1>
+    <p>No clock, no card. Pick a map and eat it bare.</p>
+    <div id="mapList"></div>
+    <button id="mapsBack" class="btn ghost" type="button">Back</button>
   </div>
 </div>
 

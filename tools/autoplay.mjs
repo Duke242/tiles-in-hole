@@ -5,6 +5,7 @@
 //   npm run dev &
 //   node tools/autoplay.mjs http://localhost:5173/?level=8 out/l8 120 20
 //   node tools/autoplay.mjs "http://localhost:5173/?mode=free" out/free 120 20   # free play
+//   node tools/autoplay.mjs "http://localhost:5173/?mode=free&map=megacity" out/city 120 20
 //   W=1280 H=800 node tools/autoplay.mjs http://localhost:5173/ out/desk 30 10
 //   EXPR='__debug.hole()' node tools/autoplay.mjs http://localhost:5173/ out/x 0   # evaluate in-page
 import { spawn } from 'node:child_process';
@@ -77,6 +78,9 @@ for (let i = 0; i < 80; i++) {
 }
 await shot('menu');
 await evalJs(`document.getElementById(${JSON.stringify(url.includes('mode=free') ? 'freeBtn' : 'playBtn')}).click(); true`);
+// Free play without ?map= opens the picker: take Classic.
+await sleep(200);
+await evalJs(`(() => { const b = document.querySelector('#maps:not(.hidden) [data-map]'); if (b) b.click(); return true; })()`);
 await sleep(800);
 await shot('play0');
 await evalJs('__debug.perf()');

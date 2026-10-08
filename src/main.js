@@ -12,7 +12,7 @@ import { Rigid, L_DISC } from './game/rigid.js';
 import { updateEating } from './game/eat.js';
 import { createProgress } from './game/progress.js';
 import { generateLevel } from './levels/generate.js';
-import { generateFreeMap } from './levels/freeplay.js';
+import { generateFreeMap, FREE_MAPS } from './levels/freeplay.js';
 import { THEMES, themeForLevel } from './world/themes.js';
 import { createHUD } from './ui/hud.js';
 import { TILE_TYPES } from './world/tiles.js';
@@ -23,8 +23,8 @@ const { scene, camera, renderer } = engine;
 
 const ground = createGround(scene);
 const fields = {
-  cube: new Field(scene, 40000, { shape: 'cube' }),
-  bead: new Field(scene, 16000, { shape: 'bead' }),
+  cube: new Field(scene, 90000, { shape: 'cube' }),
+  bead: new Field(scene, 20000, { shape: 'bead' }),
 };
 const hole = createHole(scene);
 const debris = new Debris(scene);
@@ -116,7 +116,7 @@ function setupBoard(lv) {
   refreshBoosters();
   hud.show(true);
   input.show(true);
-  for (const id of ['menu', 'pause', 'win', 'lose']) hud.overlay(id, false);
+  for (const id of ['menu', 'maps', 'pause', 'win', 'lose']) hud.overlay(id, false);
   document.getElementById('restartBtn').textContent = level.free ? 'New map' : 'Restart level';
   status = 'playing';
   camInit = false;
@@ -130,26 +130,56 @@ function startLevel(n) {
   hud.setHint(n === 1 ? 'Collect all goal items to win!' : `${level.theme.name} · fill the goal card before time runs out`);
 }
 
-// Free play: a fresh random board each time, worlds taken in turn.
-function startFree() {
-  const theme = THEMES[save.free.runs % THEMES.length];
+// Free play: a fresh random board each time on the chosen map. Classic
+// takes the worlds in turn; the big maps each have their own.
+function startFree(id = level && level.free ? level.map : 'classic') {
+  const map = FREE_MAPS.find((m) => m.id === id) || FREE_MAPS[0];
+  const theme = map.world ? THEMES.find((t) => t.id === map.world) : THEMES[save.free.runs % THEMES.length];
   const seed = dev.seed || (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
   save.free.runs++;
   writeSave(save);
   setupBoard(generateFreeMap({
-    seed, theme, size: dev.size, tiles: dev.tiles, props: dev.props,
+    seed, theme, map: map.id, giants: map.giants, holeMax: map.holeMax,
+    size: dev.size ?? map.size, tiles: dev.tiles ?? map.tiles, props: dev.props ?? map.props,
     voxCap: fields.cube.capacity, beadCap: fields.bead.capacity,
   }));
   hud.setScore(0, rigid.nTiles);
-  hud.setHint(`${theme.name} · no clock, no card: eat the whole board`);
+  hud.setHint(map.giants
+    ? `${map.name} · grow big enough and the giants come down`
+    : `${theme.name} · no clock, no card: eat the whole board`);
+}
+
+function bankBest() {
+  save.free.best = Math.max(save.free.best, run.tiles);
+  save.free.bests[level.map] = Math.max(save.free.bests[level.map] || 0, run.tiles);
 }
 
 // Leaving a free-play board early still banks its coins and best score.
 function bankFreeRun() {
   if (!level || !level.free || !progress || progress.state.status !== 'playing' || run.tiles === 0) return;
   save.coins += Math.floor(run.tiles / 20);
-  save.free.best = Math.max(save.free.best, run.tiles);
+  bankBest();
   writeSave(save);
+}
+
+// The map picker: one button per free-play map, with its best run.
+function showMaps() {
+  const list = document.getElementById('mapList');
+  list.textContent = '';
+  for (const m of FREE_MAPS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn mode ' + (m.giants ? 'blue' : 'orange');
+    b.dataset.map = m.id;
+    const best = save.free.bests[m.id];
+    b.innerHTML = `<span class="big"></span><span class="small"></span>${m.giants ? '<span class="tag">GIANT</span>' : ''}`;
+    b.querySelector('.big').textContent = m.name;
+    b.querySelector('.small').textContent = best ? `${m.blurb} · best ${best.toLocaleString()}` : m.blurb;
+    b.addEventListener('click', () => { audio.unlock(); if (rigid) startFree(m.id); });
+    list.appendChild(b);
+  }
+  hud.overlay('menu', false);
+  hud.overlay('maps', true);
 }
 
 function restart() {
@@ -165,7 +195,7 @@ function onWin(s) {
   let coins, stars = 3;
   if (free) {
     coins = 60 + Math.floor(run.tiles / 20);
-    save.free.best = Math.max(save.free.best, run.tiles);
+    bankBest();
   } else {
     const n = level.n;
     stars = s.left > level.time * 0.5 ? 3 : s.left > level.time * 0.2 ? 2 : 1;
@@ -204,13 +234,13 @@ function showMenu() {
   status = 'menu';
   hud.show(false);
   input.show(false);
-  for (const id of ['pause', 'win', 'lose']) hud.overlay(id, false);
+  for (const id of ['maps', 'pause', 'win', 'lose']) hud.overlay(id, false);
   document.getElementById('menuLevel').textContent = `Level ${save.level}`;
   document.getElementById('menuCoins').textContent = save.coins.toLocaleString();
   document.getElementById('menuTheme').textContent = `Level ${save.level} · ${themeForLevel(save.level).name}`;
   document.getElementById('menuFree').textContent = save.free.best
-    ? `One huge map · best ${save.free.best.toLocaleString()} tiles`
-    : 'One huge map · no clock, no card';
+    ? `${FREE_MAPS.length} huge maps · best ${save.free.best.toLocaleString()} tiles`
+    : `${FREE_MAPS.length} huge maps · no clock, no card`;
   hud.overlay('menu', true);
   if (!level && rigid) {
     level = generateLevel(save.level);
@@ -237,14 +267,16 @@ Rigid.init().then(() => {
 });
 
 // Dev shortcuts: ?level=N, ?r=6 (start with a bigger hole), and for free play
-// ?size=, ?tiles=, ?props=, ?seed= to get a small or repeatable board.
+// ?size=, ?tiles=, ?props=, ?seed= to get a small or repeatable board, and
+// ?map=<id> to skip the picker.
 const q = new URLSearchParams(location.search);
 const num = (k) => { const v = parseFloat(q.get(k)); return Number.isFinite(v) ? v : undefined; };
 const forcedLevel = num('level') || 0;
-const dev = { r: num('r') || 0, size: num('size'), tiles: num('tiles'), props: num('props'), seed: num('seed') };
+const dev = { r: num('r') || 0, size: num('size'), tiles: num('tiles'), props: num('props'), seed: num('seed'), map: q.get('map') };
 const on = (id, fn) => document.getElementById(id).addEventListener('click', (e) => { audio.unlock(); fn(e); });
 on('playBtn', () => { if (rigid) startLevel(forcedLevel || save.level); });
-on('freeBtn', () => { if (rigid) startFree(); });
+on('freeBtn', () => { if (!rigid) return; if (dev.map) startFree(dev.map); else showMaps(); });
+on('mapsBack', showMenu);
 on('nextBtn', () => { if (level.free) startFree(); else startLevel(level.n + 1); });
 on('retryBtn', () => startLevel(level.n));
 on('restartBtn', restart);
@@ -416,7 +448,7 @@ window.__debug = {
   rigid: () => rigid,
   engine: () => engine,
   status: () => status,
-  level: () => level && { n: level.n, free: !!level.free, theme: level.theme.id, tiles: level.totalTiles, props: level.props.length, board: level.board },
+  level: () => level && { n: level.n, free: !!level.free, map: level.map, theme: level.theme.id, tiles: level.totalTiles, props: level.props.length, board: level.board },
   targets: () => {
     if (!rigid) return [];
     const out = [];
@@ -432,7 +464,9 @@ window.__debug = {
   active: () => (rigid ? rigid.nAct : 0),
   live: () => (rigid ? rigid.nLive : 0),
   start: (n) => startLevel(n),
-  startFree: () => startFree(),
+  startFree: (id) => startFree(id),
+  place: (x, z) => { hole.place(x, z); camInit = false; },
+  giants: () => (level ? level.props.filter((o) => o.model.giant).map((o) => ({ kind: o.model.kind, x: o.x, z: o.z, n: o.remaining, state: o.state })) : []),
   setMove: (x, z) => { forcedMove = (x === null || x === undefined) ? null : { x, z }; },
   perf: () => { const o = { avgMs: (perf.total / perf.frames * 1000), worstMs: perf.worst * 1000, updateMs: perf.update / perf.frames }; perf.frames = perf.total = perf.worst = perf.update = 0; return o; },
 };
