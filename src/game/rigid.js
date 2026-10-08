@@ -121,6 +121,7 @@ export class Rigid {
     this.dormant.clear(); this.live.clear(); this.accumulator = 0;
     this.propVoxels.clear();
     this.falling.clear();
+    this.hole = null;
     this.colliderRecords.clear(); this.events.clear();
     for (const l of this.layers) {
       l.bodies.length = 0;
@@ -455,8 +456,10 @@ export class Rigid {
         this._removePropVoxel(b);
         continue;
       }
-      // The hole slid out from under it before it got below the board.
-      if (b.y > -0.5 && (b.x - hx) ** 2 + (b.z - hz) ** 2 >= holeR2) {
+      // The hole slid out from under it while it was still above the board.
+      // Once it is in the ground slab it carries on down: a body there would
+      // be shoved back up onto the board.
+      if (b.y > 0.5 && (b.x - hx) ** 2 + (b.z - hz) ** 2 >= holeR2) {
         this.falling.delete(b);
         this._createBody(b);
         b.body.setLinvel({ x: 0, y: b.vy, z: 0 }, true);
@@ -517,22 +520,18 @@ export class Rigid {
     const holeR2 = r * r * 0.98;
     const live = r * 2 + 7;
     const liveR2 = live * live, dropR2 = (live + 6) ** 2;
-    // Intact structure blocks only need a body where something can touch
-    // them: near the rim and low enough for tiles and rubble to reach.
-    const fixedR = r + 4, fixedR2 = fixedR * fixedR, fixedDropR2 = (fixedR + 6) ** 2, fixedTop = r + 6;
+    // Intact structure blocks only need a body near the rim, where tiles and
+    // rubble can reach them.
+    const fixedR = r + 4, fixedR2 = fixedR * fixedR, fixedDropR2 = (fixedR + 6) ** 2;
     this._visitDormant(hx, hz, live, b => {
       const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
-      if (b.attached ? d2 < fixedR2 && b.y < fixedTop : d2 < liveR2) this._materialize(b);
+      if (b.attached ? d2 < fixedR2 : d2 < liveR2) this._materialize(b);
     });
     const undermined = [];
-    for (const b of this.live) {
-      const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
-      if (b.attached && b.foundation && d2 < holeR2) undermined.push(b);
-    }
-    if (undermined.length) this._damageMany(undermined);
     const streamChecked = new Set();
     for (const b of this.live) {
       const dx = b.px - hx, dz = b.pz - hz, d2 = dx * dx + dz * dz;
+      if (b.attached && b.foundation && d2 < holeR2) { undermined.push(b); continue; }
       if (!b.attached) {
         const over = d2 < holeR2 || b.body.translation().y < 0.05;
         if (over !== b.offGround) {
@@ -546,6 +545,7 @@ export class Rigid {
         this._dematerialize(b, hole, drop, streamChecked);
       }
     }
+    if (undermined.length) this._damageMany(undermined);
     if (this.falling.size) this._updateFalling(dt, hx, hz, holeR2);
     // Fractional frames accumulate instead of advancing physics twice as fast
     // on 120 Hz screens. Discard excess backlog after a stall.

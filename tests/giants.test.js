@@ -55,15 +55,23 @@ test('a mass collapse over the pit falls without bodies and is all credited', ()
   assert.equal(rigid.falling.size, 0);
 });
 
-test('a falling block the hole slides away from lands as a body', () => {
+test('a falling block the hole slides away from lands as a body unless it is in the ground', () => {
   const s = new Sculpt();
   s.box(0, 9.5, 0, 4, 9.5, 4, '#ff8844', { hollow: 1 });
   setup(s.build({ kind: 'tower' }));
   rigid.update(1 / 60, { x: 0, z: 0, r: 8 });
   const n = rigid.falling.size;
   rigid.update(1 / 60, { x: 60, z: 0, r: 8 });
-  assert.equal(rigid.falling.size, 0);
-  assert.ok(rigid.nLive >= n);
+  assert.ok(rigid.falling.size < n / 5);
+  for (const b of rigid.falling) assert.ok(b.y <= 0.5, 'only blocks already in the ground keep falling');
+  assert.ok(rigid.nLive >= n - rigid.falling.size);
+});
+
+test('hollow cones keep their tip', () => {
+  const s = new Sculpt();
+  s.cone(0, 0, 0, 4, 0.6, 9, '#ff8844', { hollow: 1.2 });
+  const top = s.build({}).vox.filter((v) => v.y === 9);
+  assert.equal(top.length, 1);
 });
 
 test('the magnet only tears blocks off near the rim', () => {

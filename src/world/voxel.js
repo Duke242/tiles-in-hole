@@ -92,7 +92,7 @@ export class Sculpt {
       if (t < 0 || t > 1) return false;
       const r = r0 + (r1 - r0) * t, d2 = (x - cx) ** 2 + (z - cz) ** 2;
       if (d2 > r * r + 1e-6) return false;
-      return !hollow || d2 > (r - hollow) ** 2;
+      return !hollow || r <= hollow || d2 > (r - hollow) ** 2;
     }, color, o.shape);
   }
 
@@ -106,7 +106,7 @@ export class Sculpt {
       if (axis === 'y') q = (Math.hypot(dx, dz) - R) ** 2 + dy * dy;
       else if (axis === 'z') q = (Math.hypot(dx, dy) - R) ** 2 + dz * dz;
       else q = (Math.hypot(dy, dz) - R) ** 2 + dx * dx;
-      return q <= r * r + 1e-6 && !(o.hollow && q <= (r - o.hollow) ** 2);
+      return q <= r * r + 1e-6 && !(o.hollow && o.hollow < r && q <= (r - o.hollow) ** 2);
     }, color, o.shape);
   }
 

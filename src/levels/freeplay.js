@@ -88,12 +88,13 @@ export function generateFreeMap({
   big.sort((a, b) => a.radius - b.radius);
   for (let i = 0; i < big.length; i++) {
     const model = big[i];
-    if (cubes + model.count > voxCap * 0.8) continue;
+    const nb = model.vox.reduce((n, v) => n + (v.s === BEAD ? 1 : 0), 0), nc = model.count - nb;
+    if (cubes + nc > voxCap * 0.8 || beads + nb > beadCap * 0.8) continue;
     const t = big.length > 1 ? i / (big.length - 1) : 0;
     const dMin = Math.min(half * 0.85, 45 + t * half * 0.45) + model.radius * 0.3;
     const at = place(model.radius + 2, dMin, reach, 80);
     if (!at) continue;
-    cubes += model.count;
+    cubes += nc; beads += nb;
     props.push({ x: at[0], z: at[1], yaw: rng.i(0, 3) * Math.PI / 2, model, need: model.radius });
   }
 
@@ -160,7 +161,8 @@ export function generateFreeMap({
   }
 
   // Cakes: tall wide single tiles, one item each, away from the start.
-  for (let i = 0; i < Math.round(40 * (size / FREE_SIZE) ** 2); i++) {
+  const nCakes = Math.round(40 * (size / FREE_SIZE) ** 2);
+  for (let i = 0; i < nCakes; i++) {
     const at = place(1.2, 22);
     if (!at) break;
     tiles.push({ x: at[0], y: DISC_H * 3 / 2, z: at[1], kind: L_DISC, type: rng.pick(allTypes), yaw: rng.r(0, TAU), scale: 1.7, tall: 3 });

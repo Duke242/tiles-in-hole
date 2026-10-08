@@ -128,8 +128,7 @@ longer than it was as built, so a designed overhang holds but a skyscraper
 with a wide bite out of its base drops the columns over the gap. A collapse
 of more than ~120 blocks drops the part that is over the pit without bodies
 (plain free fall), so a giant coming down does not stall the solver. Intact
-blocks only get a (fixed) body near the rim and below the hole's reach in
-height. Detached sections
+blocks only get a (fixed) body near the rim. Detached sections
 retain breakable fixed joints, gravity, friction, and collision contact; broken
 bonds stay broken when debris streams out and back in. This is a game support
 model rather than a material-stress simulation. Their original instanced voxel
