@@ -110,3 +110,46 @@ There is no whole-structure sinking, pulling, or automatic credit for blocks
 that have not fallen into the pit.
 
 All models and code are original.
+
+## Squad Rush (zombie.html)
+
+A second, separate game in this repo: a lane shooter where your squad runs up
+a road, grows or shrinks through number gates, guns down zombie hordes and
+fights a boss. It shares the stack (Three.js, Vite, `node --test`) but none of
+the hole game's code except the seeded RNG and the synth sound kit.
+
+**Play:** https://duke242.github.io/tiles-in-hole/zombie.html (`npm run dev`,
+then open `/zombie.html` locally)
+
+- **Steer** by dragging left/right (touch or mouse) or with ← → / A D. The
+  squad runs and shoots by itself. Esc or P pauses.
+- **Gates** come in pairs across the road: `+`, `×` grow the squad, `−`, `÷`
+  shrink it. Shooting a `+` gate makes it bigger and shooting a `−` gate wears
+  it down until it flips to `+`; bigger numbers take more bullets, and each
+  gate can only climb ten steps. Zombies kill a soldier on contact (brutes
+  take four).
+- **Bosses** stop the squad and slowly close in, crushing anyone they reach.
+  Their attacks are red warnings on the road that fill up and then go off:
+  spit (circles), sweep (half the road), summon (a pack of runners) and charge
+  (a strip down the middle). Each tier adds an attack and more HP.
+- **Levels:** ten hand-made roads, each ending in a boss. They unlock in
+  order; the best survivor count per level is saved.
+- **Free Mode:** one endless road. Hordes get bigger and tougher the longer you
+  run, and a boss arrives about every 45 seconds, each one stronger than the
+  last. Score is zombies + boss bonuses + distance; the best is saved.
+
+```
+src/squad/
+  logic.js   rules: gate maths, formation, zombie and boss stats, Free mode curve
+  levels.js  the ten levels
+  sim.js     the whole game as plain data, stepped at 60 Hz; plus the autopilot
+  render.js  Three.js view of a Sim (instanced soldiers/zombies/bullets)
+  sfx.js     synthesized sounds
+  main.js    menus, input, HUD, frame loop
+```
+
+The simulation has no Three.js or DOM in it, so `tests/squad.test.js` plays
+every level headlessly with the autopilot (`botTarget`) to check they can be
+beaten, that taking the worse gates loses, and that Free mode always ends.
+`?bot=1` lets the autopilot play in the browser, and `tools/squad-smoke.mjs`
+uses it to screenshot runs in headless Chromium.
