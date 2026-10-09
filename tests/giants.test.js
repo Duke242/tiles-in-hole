@@ -116,3 +116,27 @@ test('every free-play map places its giants on the board within the voxel pool',
     assert.ok(level.tiles.length > 5000);
   }
 });
+
+test('a runaway body is slowed before the step instead of flying off to infinity', () => {
+  const s = new Sculpt();
+  s.paint(0, 3, 0, '#ff8844');
+  setup(s.build({ kind: 'one' }));
+  const b = [...rigid.propVoxels][0];
+  rigid._damage(b);
+  b.body.setLinvel({ x: 1e6, y: 0, z: 0 }, true); b.asleep = false;
+  rigid.update(1 / 60, { x: 50, z: 50, r: 1 });
+  const v = b.body.linvel();
+  assert.ok(Math.hypot(v.x, v.y, v.z) <= 81);
+});
+
+test('removed and reset blocks drop their stale body handles', () => {
+  const s = new Sculpt();
+  s.box(0, 9.5, 0, 4, 9.5, 4, '#ff8844', { hollow: 1 });
+  setup(s.build({ kind: 'tower' }));
+  rigid.update(1 / 60, { x: 30, z: 0, r: 3 });
+  for (let i = 0; i < 60; i++) rigid.update(1 / 60, { x: 3, z: 0, r: 3 });
+  const live = [...rigid.live];
+  assert.ok(live.length > 0);
+  rigid.reset();
+  for (const b of live) assert.equal(b.body, null);
+});

@@ -31,6 +31,10 @@ const BREAK_FORCE = 100;
 // over the void there is nothing for them to hit.
 const MASS_COLLAPSE = 120;
 const GRAVITY = 30;
+// Nothing in the game moves this fast on purpose. A body that does was shot
+// out of an overlap; left alone it can reach infinity, and Rapier aborts on
+// a non-finite pose, which takes the whole physics world down with it.
+const MAX_SPEED = 80;
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 const _o = new THREE.Object3D();
 const _c = new THREE.Color();
@@ -117,7 +121,7 @@ export class Rigid {
   get voxCap() { return this.layers[0].cap; }
 
   reset() {
-    for (const b of this.live) this.world.removeRigidBody(b.body);
+    for (const b of this.live) { this.world.removeRigidBody(b.body); b.body = null; b.collider = null; }
     this.dormant.clear(); this.live.clear(); this.accumulator = 0;
     this.propVoxels.clear();
     this.falling.clear();
@@ -357,6 +361,7 @@ export class Rigid {
     b.structure?.blocks.delete(b);
     if (b.collider) this.colliderRecords.delete(b.collider.handle);
     if (b.body) this.world.removeRigidBody(b.body);
+    b.body = null; b.collider = null;
     this.live.delete(b); this._forgetDormant(b); this.propVoxels.delete(b); this.falling.delete(b);
     b.field.hidePart(b.ref, b.part);
     b.prop.remaining--;
@@ -387,6 +392,16 @@ export class Rigid {
       if (bond.joint) {this.world.removeImpulseJoint(bond.joint,true);bond.joint=null;}
       bond.broken = true;
     }
+  }
+
+  // Pull a runaway body back to a sane speed (or a stop, if it went NaN).
+  _tame(b, v, s) {
+    const k = Number.isFinite(s) ? MAX_SPEED / s : 0;
+    b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true);
+    const w = b.body.angvel();
+    if (!Number.isFinite(w.x + w.y + w.z) || Math.hypot(w.x, w.y, w.z) > 40) b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    const t = b.body.translation();
+    if (!Number.isFinite(t.x + t.y + t.z)) b.body.setTranslation({ x: b.px || 0, y: -50, z: b.pz || 0 }, true);
   }
 
   _damage(b) { this._damageMany([b]); }
@@ -554,7 +569,9 @@ export class Rigid {
       for (const b of this.live) {
         b.impactSpeed = 0;
         if (!b.attached && !b.asleep) {
-          const v = b.body.linvel(); b.impactSpeed = Math.hypot(v.x,v.y,v.z);
+          const v = b.body.linvel(), s = Math.hypot(v.x,v.y,v.z);
+          if (!(s <= MAX_SPEED)) this._tame(b, v, s);
+          b.impactSpeed = Math.min(s, MAX_SPEED);
         }
       }
       this.world.step(this.events);
