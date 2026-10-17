@@ -31,6 +31,7 @@ export class Sim {
     this.bossesBeaten = 0;
     this.fx = [];              // one-shot effects for the renderer and audio
     this.shots = 0;            // shots fired since the renderer last looked
+    this.hitCount = 0;
 
     this.squad = { x: 0, target: 0, d: 0, speed: RUN_SPEED, soldiers: [] };
     this.zombies = [];
@@ -212,9 +213,9 @@ export class Sim {
       so.cool -= dt;
       so.shot = Math.max(0, so.shot - dt);
       if (so.cool > 0) continue;
-      so.shot = 0.05; // muzzle flash time, for the renderer
       so.cool += (1 / FIRE_RATE) * this.rng.r(0.85, 1.15);
       if (this.bullets.length >= MAX_BULLETS) continue;
+      so.shot = 0.05; // muzzle flash time, for the renderer
       let vx = 0, best = Infinity;
       for (const t of near) {
         const dd = t.d - so.d;
@@ -302,7 +303,8 @@ export class Sim {
   damageZombie(z, n) {
     z.hp -= n;
     z.flash = 0.08;
-    if (z.hp > 0) this.fx.push({ type: 'hit', x: z.x, d: z.d, scale: z.scale });
+    // A blood spray for every third non-lethal hit is plenty.
+    if (z.hp > 0 && ++this.hitCount % 3 === 0) this.fx.push({ type: 'hit', x: z.x, d: z.d, scale: z.scale });
     if (z.hp <= 0) {
       this.kills++;
       this.score += z.score;

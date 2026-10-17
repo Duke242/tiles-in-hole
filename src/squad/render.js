@@ -26,6 +26,8 @@ const MAX_DECALS = 240;
 const ROAD_LEN = 260;
 const WALK_W = 1.7;   // sidewalk width
 const QUALITY = ['low', 'medium', 'high'];
+const ZOMBIE_TINTS = { walker: [1, 1, 1], runner: [1.18, 1.08, 0.7], brute: [0.82, 0.74, 1.0] };
+const SHADOW_TOP = 24;
 
 // ---------- textures ----------
 
@@ -151,12 +153,14 @@ function hazardTexture(kind) {
 // A character made of rigid instanced parts. Each part is drawn at the
 // instance's base matrix, offset to its joint and swung about x.
 class Rig {
-  constructor(scene, parts, max, material) {
+  // shadows: 'all', or 'body' to cast only from the unjointed part (cheap
+  // enough for hundreds of zombies; the body's shadow reads fine alone).
+  constructor(scene, parts, max, material, shadows = 'all') {
     this.parts = parts.map((p) => {
       const mesh = new THREE.InstancedMesh(p.geo, material, max);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
-      mesh.castShadow = true;
+      mesh.castShadow = shadows === 'all' || !p.joint;
       mesh.count = 0;
       // Untinted instances must start white, not black.
       const white = new THREE.Color(1, 1, 1);
@@ -239,7 +243,7 @@ export class Renderer {
     this.gateViews = new Map();
     this.hazardViews = new Map();
     this.bossView = null;
-    this.perf = { t: 0, frames: 0, last: performance.now() };
+    this.perf = { t: 0, frames: 0, last: performance.now(), born: performance.now() };
     addEventListener('resize', () => this.resize());
     this.applyQuality();
   }
@@ -289,7 +293,7 @@ export class Renderer {
     const sun = this.sun = new THREE.DirectionalLight(0xfff0d6, 2.5);
     sun.castShadow = true;
     const sc = sun.shadow.camera;
-    sc.left = -14; sc.right = 14; sc.top = 24; sc.bottom = -16; sc.near = 1; sc.far = 70;
+    sc.left = -14; sc.right = 14; sc.top = SHADOW_TOP; sc.bottom = -16; sc.near = 1; sc.far = 80;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
     this.scene.add(sun, sun.target);
@@ -347,8 +351,21 @@ export class Renderer {
       { geo: K.zombieArm(1), joint: 'armR', pivot: [ZS.x, ZS.y, ZS.z] },
       { geo: K.zombieLeg(), joint: 'legL', pivot: [-ZH.x, ZH.y, 0] },
       { geo: K.zombieLeg(), joint: 'legR', pivot: [ZH.x, ZH.y, 0] },
-    ], MAX_ZOMBIES + MAX_CORPSES, mat);
+    ], MAX_ZOMBIES + MAX_CORPSES, mat, 'body');
     this.corpses = [];
+
+    // Soft blob under the squad, for when shadow maps are off (low quality),
+    // so the crowd still reads as standing on the road.
+    const blobTex = canvasTex(64, 64, (x, w, h) => {
+      const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      g.addColorStop(0, 'rgba(0,0,0,.45)'); g.addColorStop(0.7, 'rgba(0,0,0,.25)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+    });
+    this.blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+    this.blob.position.y = 0.02;
+    this.blob.visible = false;
+    this.scene.add(this.blob);
   }
 
   buildFx() {
@@ -434,6 +451,8 @@ export class Renderer {
       this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
     }
     this.sun.castShadow = shadows;
+    this.bloom.enabled = q === 'high';
+    this.blob.visible = !shadows;
     const size = q === 'high' ? 2048 : 1024;
     if (this.sun.shadow.mapSize.x !== size) {
       this.sun.shadow.mapSize.set(size, size);
@@ -444,9 +463,13 @@ export class Renderer {
   }
 
   // Step quality down if frames are slow (never back up within a session).
+  // A gap longer than a few frames (hidden tab, minimised window, shader
+  // warm-up) is not a slow frame rate: restart the window instead.
   watchPerf() {
-    const now = performance.now(), p = this.perf;
-    p.t += now - p.last; p.last = now; p.frames++;
+    const now = performance.now(), p = this.perf, gap = now - p.last;
+    p.last = now;
+    if (gap > 250 || now - p.born < 3000) { p.t = 0; p.frames = 0; return; }
+    p.t += gap; p.frames++;
     if (p.t < 2500) return;
     const fps = (p.frames * 1000) / p.t;
     p.t = 0; p.frames = 0;
@@ -489,6 +512,7 @@ export class Renderer {
       const list = this.props.filter((p) => p.kind === k);
       list.forEach((p, i) => this.placeProp(p, k.spacing ? sim.squad.d - 12 + i * k.spacing : sim.squad.d - 12 + Math.random() * span, i));
     }
+    for (const c of this.cloudSpots) c.d = sim.squad.d + 120 + Math.random() * 120;
     this.lookX = 0;
     this.camBack = 0;
   }
@@ -520,7 +544,7 @@ export class Renderer {
       this.sparkList.push({
         x, y, z: -d, vx: Math.cos(a) * Math.cos(el) * speed * (0.3 + Math.random()), vy: Math.sin(el) * speed * (0.5 + Math.random()),
         vz: Math.sin(a) * Math.cos(el) * speed * (0.3 + Math.random()), life: 0.35 + Math.random() * 0.45, max: 0.8,
-        color: new THREE.Color(color), s: size * (0.5 + Math.random()),
+        color, s: size * (0.5 + Math.random()),
       });
     }
   }
@@ -749,8 +773,9 @@ export class Renderer {
     this.drawGates(sim, dt);
     this.drawBoss(sim, dt);
     this.drawHazards(sim);
-    if (this.quality === 'high') this.composer.render();
-    else this.gl.render(this.scene, this.camera);
+    // Always through the composer so tone mapping is identical at every
+    // quality; only the bloom pass switches off.
+    this.composer.render();
   }
 
   drawCamera(sim, dt) {
@@ -771,10 +796,14 @@ export class Renderer {
     this.camera.lookAt(look);
     this.sky.position.copy(cam);
 
-    // The sun's shadow box follows the action.
+    // The sun's shadow box follows the action, and reaches further ahead
+    // when the camera backs off so nothing visible loses its shadow.
     const tz = -(sq.d + 8);
     this.sun.target.position.set(0, 0, tz);
     this.sun.position.set(-9, 18, tz + 8);
+    const top = SHADOW_TOP + Math.ceil(this.camBack * 2.5);
+    const sc = this.sun.shadow.camera;
+    if (sc.top !== top) { sc.top = top; sc.updateProjectionMatrix(); }
     this.flashLight.intensity *= Math.max(0, 1 - dt * 7);
   }
 
@@ -818,13 +847,18 @@ export class Renderer {
       }
     }
     this.soldierRig.finish(s.length);
+    if (this.blob.visible) {
+      const R = squadRadius(s.length) + 0.5;
+      this.blob.position.set(sq.x, 0.02, -sq.d);
+      this.blob.scale.set(R * 2, 1, R * 2 * 1.56);
+    }
     this.muzzles.count = m;
     this.muzzles.instanceMatrix.needsUpdate = true;
   }
 
   drawZombies(sim, dt) {
     const sq = sim.squad, rig = this.zombieRig, tint = this.col;
-    const tints = { walker: [1, 1, 1], runner: [1.18, 1.08, 0.7], brute: [0.82, 0.74, 1.0] };
+    const tints = ZOMBIE_TINTS;
     let n = 0;
     for (const z of sim.zombies) {
       if (n >= MAX_ZOMBIES) break;
@@ -897,7 +931,7 @@ export class Renderer {
       const k = Math.min(1, p.life / 0.3);
       this.m4.compose(this.v3.set(p.x, Math.max(0.03, p.y), p.z), this.q.identity(), this.s3.setScalar(p.s * k));
       this.sparks.setMatrixAt(n, this.m4);
-      this.sparks.setColorAt(n, this.col.copy(p.color).multiplyScalar(2.5 * k));
+      this.sparks.setColorAt(n, this.col.set(p.color).multiplyScalar(2.5 * k));
       n++;
       live.push(p);
     }
@@ -993,7 +1027,7 @@ export class Renderer {
     const lit = b.flash > 0 && Math.floor(t * 12) % 2 === 0 ? 0.25 : 0;
     u.mat.emissive.setRGB(lit, lit, lit);
     u.eyes.material.color.setRGB(5 + Math.sin(t * 6) * 1.5, 1.2, 0.4);
-    if (b.flash > 0 && Math.random() < 0.35) {
+    if (dt > 0 && b.flash > 0 && Math.random() < 0.35) {
       this.addBits(b.x + (Math.random() - 0.5) * s, 1.1 * s, b.d - b.r * 0.6, 1, 0x7a3f96, { speed: 1.5, up: 1.5, size: 1.4, dir: 1, life: 0.6 });
     }
   }
