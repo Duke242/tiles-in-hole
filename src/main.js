@@ -366,8 +366,14 @@ const perf = { frames: 0, total: 0, worst: 0, update: 0 };
 const NO_MOVE = { x: 0, z: 0 };
 let forcedMove = null;   // automation hook (see window.__debug.setMove)
 
+let crashed = false;
 function frame(now) {
   requestAnimationFrame(frame);
+  if (crashed) return;
+  try { step(now); } catch (e) { crashed = true; showFatal(e); }
+}
+
+function step(now) {
   const raw = (now - last) / 1000;
   const dt = Math.min(0.05, raw);
   last = now;
@@ -473,8 +479,18 @@ window.__debug = {
 
 showMenu();
 
-addEventListener('error', (e) => {
+// Keep the first error on screen: once the physics engine has aborted,
+// every later call fails with a generic "recursive use" error that would
+// hide the one that matters.
+let fatalShown = false;
+function showFatal(err) {
+  if (fatalShown) return;
+  fatalShown = true;
   const d = document.getElementById('fatal');
   d.classList.remove('hidden');
-  d.textContent = 'Error: ' + (e.message || e.error);
-});
+  const stack = err && err.stack ? String(err.stack).split('\n').slice(0, 6).join('\n') : '';
+  d.textContent = 'Error: ' + (err && err.message || err) + (stack ? '\n\n' + stack : '');
+  console.error(err);
+}
+addEventListener('error', (e) => showFatal(e.error || e.message));
+addEventListener('unhandledrejection', (e) => showFatal(e.reason));
