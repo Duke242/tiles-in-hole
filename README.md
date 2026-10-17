@@ -170,7 +170,8 @@ src/squad/
   logic.js   rules: gate maths, formation, zombie and boss stats, Free mode curve
   levels.js  the ten levels
   sim.js     the whole game as plain data, stepped at 60 Hz; plus the autopilot
-  render.js  Three.js view of a Sim (instanced soldiers/zombies/bullets)
+  models.js  smooth low-poly characters (jointed for animation) and props
+  render.js  Three.js view of a Sim: lighting, shadows, bloom, blood, explosions
   sfx.js     synthesized sounds
   main.js    menus, input, HUD, frame loop
 ```
@@ -178,5 +179,7 @@ src/squad/
 The simulation has no Three.js or DOM in it, so `tests/squad.test.js` plays
 every level headlessly with the autopilot (`botTarget`) to check they can be
 beaten, that taking the worse gates loses, and that Free mode always ends.
-`?bot=1` lets the autopilot play in the browser, and `tools/squad-smoke.mjs`
+Graphics adapt to the device: on slow frame rates the bloom pass, then
+shadows, switch off (`?quality=low|medium|high` pins a level). `?bot=1` lets
+the autopilot play in the browser, and `tools/squad-smoke.mjs`
 uses it to screenshot runs in headless Chromium.

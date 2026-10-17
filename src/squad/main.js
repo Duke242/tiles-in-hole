@@ -2,6 +2,7 @@
 //   ?level=N     start straight into level N
 //   ?mode=free   start straight into Free mode
 //   ?bot=1       let the autopilot play (demo / smoke tests)
+//   ?quality=low|medium|high   fix the graphics level (otherwise it adapts)
 import { Sim, botTarget } from './sim.js';
 import { Renderer } from './render.js';
 import { Sfx } from './sfx.js';
@@ -16,7 +17,7 @@ const BOT = params.get('bot') === '1';
 const save = loadSave();
 const sfx = new Sfx();
 sfx.muted = !save.sound;
-const renderer = new Renderer($('c'));
+const renderer = new Renderer($('c'), { quality: params.get('quality') });
 
 let sim = null;
 let run = null;        // { mode, levelIndex } for the run being played; null on the menu
